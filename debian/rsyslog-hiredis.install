@@ -1,0 +1,1 @@
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/omhiredis.so

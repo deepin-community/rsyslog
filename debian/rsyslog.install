@@ -1,0 +1,37 @@
+#!/usr/bin/dh-exec
+debian/rsyslog.conf  etc/
+debian/rsyslog-rotate usr/lib/rsyslog/
+usr/sbin/
+usr/share/man/
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/fmhash.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imfile.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imklog.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/immark.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/impstats.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imtcp.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imudp.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imuxsock.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmnet.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmnetstrms.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmnsd_ptcp.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmregexp.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmtcpclt.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmtcpsrv.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/lmzlibw.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmanon.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmexternal.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmnormalize.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmjsonparse.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmutf8fix.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmpstrucdata.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmsequence.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmfields.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/mmrm1stspace.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/ommail.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/omprog.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/omuxsock.so
+usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/pm*.so
+[linux-any] usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imkmsg.so
+[linux-any] usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imptcp.so
+[linux-any] usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/imjournal.so
+[linux-any] usr/lib/${env:DEB_HOST_MULTIARCH}/rsyslog/omjournal.so
