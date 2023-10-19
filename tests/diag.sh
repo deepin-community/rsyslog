@@ -68,6 +68,7 @@ export TB_ERR_TIMEOUT=101
 export ZOOPIDFILE="$(pwd)/zookeeper.pid"
 
 #valgrind="valgrind --malloc-fill=ff --free-fill=fe --log-fd=1"
+#valgrind="valgrind --tool=callgrind" # for kcachegrind profiling
 
 # **** use the line below for very hard to find leaks! *****
 #valgrind="valgrind --leak-check=full --show-leak-kinds=all --malloc-fill=ff --free-fill=fe --log-fd=1"
@@ -127,6 +128,20 @@ skip_platform() {
 		exit 77
 	fi
 
+}
+
+# function to skip a test if TSAN is enabled
+# This is necessary as TSAN does not properly handle thread creation
+# after fork() - which happens regularly in rsyslog if backgrounding
+# is activated.
+# $1 is the reason why TSAN is not supported
+# note: we depend on CFLAGS to properly reflect build options (what
+#       usually is the case when the testbench is run)
+skip_TSAN() {
+	if [[ "$CFLAGS" == *"sanitize=thread"* ]]; then
+		printf 'test incompatible with TSAN because of %s\n' "$1"
+		exit 77
+	fi
 }
 
 
@@ -302,7 +317,7 @@ wait_startup_pid() {
 		if [ $(date +%s) -gt $(( TB_STARTTEST + TB_TEST_MAX_RUNTIME )) ]; then
 		   printf '%s ABORT! Timeout waiting on startup (pid file %s)\n' "$(tb_timestamp)" "$1"
 		   ls -l "$1"
-		   ps -fp $(cat "$1")
+		   ps -fp $($SUDO cat "$1")
 		   error_exit 1
 		fi
 	done
@@ -485,7 +500,7 @@ wait_startup() {
 	echo "$(tb_timestamp) rsyslogd$1 startup msg seen, pid " $(cat $RSYSLOG_PIDBASE$1.pid)
 	wait_file_exists $RSYSLOG_DYNNAME.imdiag$1.port
 	eval export IMDIAG_PORT$1=$(cat $RSYSLOG_DYNNAME.imdiag$1.port)
-	eval PORT=$IMDIAG_PORT$1
+	eval PORT='$IMDIAG_PORT'$1
 	echo "imdiag$1 port: $PORT"
 	if [ "$PORT" == "" ]; then
 		echo "TESTBENCH ERROR: imdiag port not found!"
@@ -592,7 +607,10 @@ startup_vg_waitpid_only() {
 	if [ "$RS_TESTBENCH_LEAK_CHECK" == "" ]; then
 		RS_TESTBENCH_LEAK_CHECK=full
 	fi
-	LD_PRELOAD=$RSYSLOG_PRELOAD valgrind $RS_TEST_VALGRIND_EXTRA_OPTS $RS_TESTBENCH_VALGRIND_EXTRA_OPTS --suppressions=$srcdir/known_issues.supp ${EXTRA_VALGRIND_SUPPRESSIONS:-} --gen-suppressions=all --log-fd=1 --error-exitcode=10 --malloc-fill=ff --free-fill=fe --leak-check=$RS_TESTBENCH_LEAK_CHECK ../tools/rsyslogd -C -n -i$RSYSLOG_PIDBASE$2.pid -M../runtime/.libs:../.libs -f$CONF_FILE &
+	# add --keep-debuginfo=yes for hard to find cases; this cannot be used generally,
+	# because it is only supported by newer versions of valgrind (else CI will fail
+	# on older platforms).
+	LD_PRELOAD=$RSYSLOG_PRELOAD valgrind $RS_TEST_VALGRIND_EXTRA_OPTS $RS_TESTBENCH_VALGRIND_EXTRA_OPTS --suppressions=$srcdir/known_issues.supp ${EXTRA_VALGRIND_SUPPRESSIONS:-} --gen-suppressions=all --log-fd=1 --error-exitcode=10 --malloc-fill=ff --free-fill=fe --leak-check=$RS_TESTBENCH_LEAK_CHECK ../tools/rsyslogd -C -n -i$RSYSLOG_PIDBASE$instance.pid -M../runtime/.libs:../.libs -f$CONF_FILE &
 	wait_rsyslog_startup_pid $1
 }
 
@@ -600,7 +618,7 @@ startup_vg_waitpid_only() {
 # returns only after successful startup, $2 is the instance (blank or 2!)
 startup_vg() {
 		startup_vg_waitpid_only $1 $2
-		wait_startup $2
+		wait_startup $instance
 		reassign_ports
 }
 
@@ -645,8 +663,8 @@ injectmsg() {
 # inject messages in INSTANCE 2 via our inject interface (imdiag)
 injectmsg2() {
 	msgs=${2:-$NUMMESSAGES}
-	echo injecting $2 messages into instance 2
-	echo injectmsg "$1:-0" "$msgs" $3 $4 | $TESTTOOL_DIR/diagtalker -p$IMDIAG_PORT2 || error_exit  $?
+	echo injecting $msgs messages into instance 2
+	echo injectmsg "${1:-0}" "$msgs" $3 $4 | $TESTTOOL_DIR/diagtalker -p$IMDIAG_PORT2 || error_exit  $?
 	# TODO: some return state checking? (does it really make sense here?)
 }
 
@@ -764,7 +782,7 @@ content_check_with_count() {
 			count=$(grep -c -F -- "$1" <${RSYSLOG_OUT_LOG})
 		fi
 		if [ ${count:=0} -eq $2 ]; then
-			echo content_check_with_count SUCCESS, \"$1\" occured $2 times
+			echo content_check_with_count SUCCESS, \"$1\" occurred $2 times
 			break
 		else
 			if [ "$timecounter" == "$timeoutend" ]; then
@@ -889,6 +907,39 @@ check_journal_testmsg_received() {
 	fi;
 }
 
+# checks that among the open files found in /proc/<PID>/fd/*
+# there is or is not, depending on the calling mode,
+# a link with the specified suffix in the target name
+check_fd_for_pid() {
+  local pid="$1" mode="$2" suffix="$3" target seen
+  seen="false"
+  for fd in $(echo /proc/$pid/fd/*); do
+    target="$(readlink -m "$fd")"
+    if [[ "$target" != *$RSYSLOG_DYNNAME* ]]; then
+      continue
+    fi
+    if ((i % 10 == 0)); then
+      echo "INFO: check target='$target'"
+    fi
+    if [[ "$target" == *$suffix ]]; then
+      seen="true"
+      if [[ "$mode" == "exists" ]]; then
+        echo "PASS: check fd for pid=$pid mode='$mode' suffix='$suffix'"
+        return 0
+      fi
+    fi
+  done
+  if [[ "$seen" == "false" ]] && [[ "$mode" == "absent" ]]; then
+    echo "PASS: check fd for pid=$pid mode='$mode' suffix='$suffix'"
+    return 0
+  fi
+  echo "FAIL: check fd for pid=$pid mode='$mode' suffix='$suffix'"
+  if [[ "$mode" != "ignore" ]]; then
+    return 1
+  fi
+  return 0
+}
+
 # wait for main message queue to be empty. $1 is the instance.
 # we run in a loop to ensure rsyslog is *really* finished when a
 # function for the "finished predicate" is defined. This is done
@@ -978,6 +1029,19 @@ quit"
 	   pwd
 	   ls -l core.*
 	   error_exit  1
+	fi
+}
+
+
+# wait for HUP to complete. $1 is the instance
+# note: there is a slight chance HUP was not completed. This can happen if it takes
+# the system very long (> 500ms) to receive the HUP and set the internal flag
+# variable. aka "very very low probability".
+await_HUP_processed() {
+	if [ "$1" == "2" ]; then
+		echo AwaitHUPComplete | $TESTTOOL_DIR/diagtalker -pIMDIAG_PORT2 || error_exit  $?
+	else
+		echo AwaitHUPComplete | $TESTTOOL_DIR/diagtalker -p$IMDIAG_PORT || error_exit  $?
 	fi
 }
 
@@ -1166,8 +1230,10 @@ issue_HUP() {
 		sleeptime=1000
 	fi
 	kill -HUP $(cat $RSYSLOG_PIDBASE$1.pid)
-	printf 'HUP issued to pid %d\n' $(cat $RSYSLOG_PIDBASE$1.pid)
-	$TESTTOOL_DIR/msleep $sleeptime
+	printf 'HUP issued to pid %d - waiting for it to become processed\n' \
+		$(cat $RSYSLOG_PIDBASE$1.pid)
+	await_HUP_processed
+	#$TESTTOOL_DIR/msleep $sleeptime
 }
 
 
@@ -1312,6 +1378,11 @@ error_exit() {
 	# Extended Exit handling for kafka / zookeeper instances 
 	kafka_exit_handling "false"
 
+	# Ensure redis instance is stopped
+	if [ -n "$REDIS_DYN_DIR" ]; then
+		stop_redis
+	fi
+
 	error_stats $1 # Report error to rsyslog testbench stats
 	do_cleanup
 
@@ -1393,6 +1464,9 @@ seq_check() {
 	fi
 	if [ "${SEQ_CHECK_FILE##*.}" == "gz" ]; then
 		gunzip -c "${SEQ_CHECK_FILE}" | $RS_SORTCMD $RS_SORT_NUMERIC_OPT | ./chkseq -s$startnum -e$endnum $3 $4 $5 $6 $7 $SEQ_CHECK_OPTIONS
+	elif [ "${SEQ_CHECK_FILE##*.}" == "zst" ]; then
+		ls -l "${SEQ_CHECK_FILE}"
+		unzstd < "${SEQ_CHECK_FILE}" | $RS_SORTCMD $RS_SORT_NUMERIC_OPT | ./chkseq -s$startnum -e$endnum $3 $4 $5 $6 $7 $SEQ_CHECK_OPTIONS
 	else
 		$RS_SORTCMD $RS_SORT_NUMERIC_OPT < "${SEQ_CHECK_FILE}" | ./chkseq -s$startnum -e$endnum $3 $4 $5 $6 $7 $SEQ_CHECK_OPTIONS
 	fi
@@ -1403,6 +1477,10 @@ seq_check() {
 	if [ $ret -ne 0 ]; then
 		if [ "${SEQ_CHECK_FILE##*.}" == "gz" ]; then
 			gunzip -c "${SEQ_CHECK_FILE}" | $RS_SORTCMD $RS_SORT_NUMERIC_OPT \
+				| ./chkseq -s$startnum -e$endnum $3 $4 $5 $6 $7 $SEQ_CHECK_OPTIONS \
+				> $RSYSLOG_DYNNAME.error.log
+		elif [ "${SEQ_CHECK_FILE##*.}" == "zst" ]; then
+			unzstd < "${SEQ_CHECK_FILE}" | $RS_SORTCMD $RS_SORT_NUMERIC_OPT \
 				| ./chkseq -s$startnum -e$endnum $3 $4 $5 $6 $7 $SEQ_CHECK_OPTIONS \
 				> $RSYSLOG_DYNNAME.error.log
 		else
@@ -1524,6 +1602,9 @@ exit_test() {
 	# Extended Exit handling for kafka / zookeeper instances 
 	kafka_exit_handling "true"
 
+	# Ensure redis is stopped
+	stop_redis
+
 	printf '%s Test %s SUCCESSFUL (took %s seconds)\n' "$(tb_timestamp)" "$0" "$(( $(date +%s) - TB_STARTTEST ))"
 	echo  -------------------------------------------------------------------------------
 	exit 0
@@ -1618,9 +1699,9 @@ presort() {
 
 #START: ext kafka config
 #dep_cache_dir=$(readlink -f .dep_cache)
-export RS_ZK_DOWNLOAD=apache-zookeeper-3.6.3-bin.tar.gz
+export RS_ZK_DOWNLOAD=apache-zookeeper-3.8.2-bin.tar.gz
 dep_cache_dir=$(pwd)/.dep_cache
-dep_zk_url=https://downloads.apache.org/zookeeper/zookeeper-3.6.3/$RS_ZK_DOWNLOAD
+dep_zk_url=https://downloads.apache.org/zookeeper/zookeeper-3.8.2/$RS_ZK_DOWNLOAD
 dep_zk_cached_file=$dep_cache_dir/$RS_ZK_DOWNLOAD
 
 export RS_KAFKA_DOWNLOAD=kafka_2.13-2.8.0.tgz
@@ -1628,7 +1709,7 @@ dep_kafka_url="https://www.rsyslog.com/files/download/rsyslog/$RS_KAFKA_DOWNLOAD
 dep_kafka_cached_file=$dep_cache_dir/$RS_KAFKA_DOWNLOAD
 
 if [ -z "$ES_DOWNLOAD" ]; then
-	export ES_DOWNLOAD=elasticsearch-7.14.1-linux-x86_64.tar.gz #elasticsearch-5.6.9.tar.gz
+	export ES_DOWNLOAD=elasticsearch-7.14.1-linux-x86_64.tar.gz
 fi
 if [ -z "$ES_PORT" ]; then
 	export ES_PORT=19200
@@ -2134,9 +2215,16 @@ prepare_elasticsearch() {
 	if [ -n "${ES_PORT:-}" ] ; then
 		rm -f $dep_work_dir/es/config/elasticsearch.yml
 		sed "s/^http.port:.*\$/http.port: ${ES_PORT}/" $srcdir/testsuites/$dep_work_es_config > $dep_work_dir/es/config/elasticsearch.yml
+		if [ "$ES_DOWNLOAD" != "elasticsearch-6.0.0.tar.gz" ]; then
+			printf 'xpack.security.enabled: false\n' >> $dep_work_dir/es/config/elasticsearch.yml
+		fi
 	else
 		cp -f $srcdir/testsuites/$dep_work_es_config $dep_work_dir/es/config/elasticsearch.yml
 	fi
+
+	# Avoid deprecated parameter, new option introduced with 6.7
+	echo "Setting transport tcp option to ${ES_PORT_OPTION:-transport.tcp.port}"
+	sed -i "s/transport.tcp.port/${ES_PORT_OPTION:-transport.tcp.port}/g" "$dep_work_dir/es/config/elasticsearch.yml"
 
 	if [ ! -d $dep_work_dir/es/data ]; then
 			echo "Creating elastic search directories"
@@ -2175,8 +2263,8 @@ ensure_elasticsearch_ready() {
 
 # $2, if set, is the number of additional ES instances
 start_elasticsearch() {
-	# Heap Size (limit to 128MB for testbench! defaults is way to HIGH)
-	export ES_JAVA_OPTS="-Xms128m -Xmx128m"
+	# Heap Size (limit to 256MB for testbench! defaults is way to HIGH)
+	export ES_JAVA_OPTS="-Xms256m -Xmx256m"
 
 	dep_work_dir=$(readlink -f .dep_wrk)
 	dep_work_es_config="es.yml"
@@ -2190,7 +2278,7 @@ start_elasticsearch() {
 	printf 'elasticsearch pid is %s\n' "$(cat $dep_work_es_pidfile)"
 
 	# Wait for startup with hardcoded timeout
-	timeoutend=60
+	timeoutend=120
 	timeseconds=0
 	# Loop until elasticsearch port is reachable or until
 	# timeout is reached!
@@ -2201,6 +2289,16 @@ start_elasticsearch() {
 
 		if [ "$timeseconds" -gt "$timeoutend" ]; then 
 			echo "--- TIMEOUT ( $timeseconds ) reached!!!"
+			if [ ! -d $dep_work_dir/es ]; then
+				echo "ElasticSearch $dep_work_dir/es does not exist, no ElasticSearch debuglog"
+			else
+				echo "Dumping rsyslog-testbench.log from ElasticSearch instance $1"
+				echo "========================================="
+				cat $dep_work_dir/es/logs/rsyslog-testbench.log
+				echo "========================================="
+#				printf 'non-info is:\n'
+#				grep --invert-match '^\[.* INFO ' $dep_work_dir/kafka/logs/server.log | grep '^\['
+			fi
 			error_exit 1
 		fi
 	done
@@ -2283,7 +2381,7 @@ omhttp_start_server() {
     omhttp_server_logfile="${omhttp_work_dir}/omhttp_server.log"
     mkdir -p ${omhttp_work_dir}
 
-    server_args="-p $omhttp_server_port ${*:2}"
+    server_args="-p $omhttp_server_port ${*:2} --port-file $RSYSLOG_DYNNAME.omhttp_server_lstnport.file"
 
     timeout 30m $PYTHON ${omhttp_server_py} ${server_args} >> ${omhttp_server_logfile} 2>&1 &
     if [ ! $? -eq 0 ]; then
@@ -2291,10 +2389,12 @@ omhttp_start_server() {
         rm -rf $omhttp_work_dir
         error_exit 1
     fi
-
     omhttp_server_pid=$!
+
+    wait_file_exists "$RSYSLOG_DYNNAME.omhttp_server_lstnport.file"
+    omhttp_server_lstnport="$(cat $RSYSLOG_DYNNAME.omhttp_server_lstnport.file)"
     echo ${omhttp_server_pid} > ${omhttp_server_pidfile}
-    echo "Started omhttp test server with args ${server_args} with pid ${omhttp_server_pid}"
+    echo "Started omhttp test server with args ${server_args} with pid ${omhttp_server_pid}, port {$omhttp_server_lstnport}"
 }
 
 omhttp_stop_server() {
@@ -2390,6 +2490,97 @@ mysql_cleanup_test() {
 		2>&1 | grep -iv "Using a password on the command line interface can be insecure."
 }
 
+
+start_redis() {
+	check_command_available redis-server
+
+	export REDIS_DYN_CONF="${RSYSLOG_DYNNAME}.redis.conf"
+	export REDIS_DYN_DIR="$(pwd)/${RSYSLOG_DYNNAME}-redis"
+
+	# Only set a random port if not set (useful when Redis must be restarted during a test)
+	if [ -z "$REDIS_RANDOM_PORT" ]; then
+		export REDIS_RANDOM_PORT="$(get_free_port)"
+	fi
+
+	cp $srcdir/testsuites/redis.conf $REDIS_DYN_CONF
+	mkdir -p $REDIS_DYN_DIR
+
+	sed -itemp "s+<tmpdir>+${REDIS_DYN_DIR}+g" $REDIS_DYN_CONF
+	sed -itemp "s+<rndport>+${REDIS_RANDOM_PORT}+g" $REDIS_DYN_CONF
+
+	# Start the server
+	echo "Starting redis with conf file $REDIS_DYN_CONF"
+	redis-server $REDIS_DYN_CONF &
+	$TESTTOOL_DIR/msleep 2000
+
+	# Wait for Redis to be fully up
+	timeoutend=10
+	until nc -w1 -z 127.0.0.1 $REDIS_RANDOM_PORT; do
+		echo "Waiting for Redis to start..."
+		$TESTTOOL_DIR/msleep 1000
+		(( timeseconds=timeseconds + 2 ))
+
+		if [ "$timeseconds" -gt "$timeoutend" ]; then
+			echo "--- TIMEOUT ( $timeseconds ) reached!!!"
+			if [ ! -d ${REDIS_DYN_DIR}/redis.log ]; then
+				echo "no Redis logs"
+			else
+				echo "Dumping ${REDIS_DYN_DIR}/redis.log"
+				echo "========================================="
+				cat ${REDIS_DYN_DIR}/redis.log
+				echo "========================================="
+			fi
+			error_exit 1
+		fi
+	done
+}
+
+cleanup_redis() {
+	if [ -d ${REDIS_DYN_DIR} ]; then
+		rm -rf ${REDIS_DYN_DIR}
+	fi
+	if [ -f ${REDIS_DYN_CONF} ]; then
+		rm -f ${REDIS_DYN_CONF}
+	fi
+}
+
+stop_redis() {
+	if [ -f "$REDIS_DYN_DIR/redis.pid" ]; then
+		redispid=$(cat $REDIS_DYN_DIR/redis.pid)
+		echo "Stopping Redis instance"
+		kill $redispid
+
+		i=0
+
+		# Check if redis instance went down!
+		while [ -f $REDIS_DYN_DIR/redis.pid ]; do
+			redispid=$(cat $REDIS_DYN_DIR/redis.pid)
+			if [[ "" !=  "$redispid" ]]; then
+				$TESTTOOL_DIR/msleep 100 # wait 100 milliseconds
+				if test $i -gt $TB_TIMEOUT_STARTSTOP; then
+					echo "redis server (PID $redispid) still running - Performing hard shutdown (-9)"
+					kill -9 $redispid
+					break
+				fi
+				(( i++ ))
+			else
+				# Break the loop
+				break
+			fi
+		done
+	fi
+}
+
+redis_command() {
+	check_command_available redis-cli
+
+	if [ -z "$1" ]; then
+		echo "redis_command: no command provided!"
+		error_exit 1
+	fi
+
+	printf "$1\n" | redis-cli -p "$REDIS_RANDOM_PORT"
+}
 
 # $1 - replacement string
 # $2 - start search string
@@ -2509,6 +2700,17 @@ wait_for_stats_flush() {
 	echo "stats push registered"
 }
 
+# Check file exists and is of a particular size
+# $1 - file to check
+# $2 - size to check
+file_size_check() {
+    local size=$(ls -l $1 | awk {'print $5'})
+    if [ "${size}" != "${2}" ]; then
+	printf 'File:[%s] has unexpected size. Expected:[%d], Size:[%d]\n', $1 $2 $size
+        error_exit 1
+    fi
+    return 0
+}
 
 case $1 in
    'init')	$srcdir/killrsyslog.sh # kill rsyslogd if it runs for some reason

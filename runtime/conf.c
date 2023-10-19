@@ -27,7 +27,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define CFGLNSIZ 64*1024 /* the maximum size of a configuraton file line, after re-combination */
+#define CFGLNSIZ 64*1024 /* the maximum size of a configuration file line, after re-combination */
 #include "config.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -165,7 +165,13 @@ doNameLine(uchar **pp, void* pVal)
 	p = *pp;
 	assert(p != NULL);
 
-	eDir = (enum eDirective) pVal;	/* this time, it actually is NOT a pointer! */
+	PRAGMA_DIAGNOSTIC_PUSH
+	PRAGMA_IGNORE_Wvoid_pointer_to_enum_cast;
+	/* this time, pVal actually is NOT a pointer! It is save to case, as
+	 * the enum was written to it, so there can be no loss of bits (ptr is larger).
+	 */
+	eDir = (enum eDirective) pVal;
+	PRAGMA_DIAGNOSTIC_POP
 
 	if(getSubString(&p, szName, sizeof(szName), ',')  != 0) {
 		LogError(0, RS_RET_NOT_FOUND, "Invalid config line: could not extract name - line ignored");
@@ -530,7 +536,7 @@ rsRetVal cflineDoAction(rsconf_t *conf, uchar **p, action_t **ppAction)
 			break;
 		} else if(iRet != RS_RET_CONFLINE_UNPROCESSED) {
 			/* In this case, the module would have handled the config
-			 * line, but some error occured while doing so. This error should
+			 * line, but some error occurred while doing so. This error should
 			 * already by reported by the module. We do not try any other
 			 * modules on this line, because we found the right one.
 			 * rgerhards, 2007-07-24
@@ -623,7 +629,7 @@ ENDObjClassExit(conf)
 BEGINAbstractObjClassInit(conf, 1, OBJ_IS_CORE_MODULE) /* class, version - CHANGE class also in END MACRO! */
 	/* request objects we use */
 	CHKiRet(objUse(module, CORE_COMPONENT));
-	CHKiRet(objUse(net, LM_NET_FILENAME)); /* TODO: make this dependcy go away! */
+	CHKiRet(objUse(net, LM_NET_FILENAME));
 	CHKiRet(objUse(ruleset, CORE_COMPONENT));
 
 	/* These commands will NOT be supported -- the new v6.3 config system provides
@@ -632,6 +638,3 @@ BEGINAbstractObjClassInit(conf, 1, OBJ_IS_CORE_MODULE) /* class, version - CHANG
 	CHKiRet(regCfSysLineHdlr((uchar *)"resetconfigvariables", 1, eCmdHdlrCustomHandler, resetConfigVariables,
 NULL, NULL));
 ENDObjClassInit(conf)
-
-/* vi:set ai:
- */

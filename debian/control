@@ -1,16 +1,17 @@
 Source: rsyslog
 Section: admin
-Priority: important
-Maintainer: Deepin Developer <deepin-dev@deepin.org>
+Priority: optional
+Maintainer: Michael Biebl <biebl@debian.org>
 Build-Depends: debhelper-compat (= 13),
                dh-exec,
                autoconf-archive,
                zlib1g-dev,
+               libzstd-dev (>= 1.4.0),
                libhiredis-dev,
                default-libmysqlclient-dev,
                libpq-dev,
                libmongoc-dev,
-               libcurl4-gnutls-dev,
+               libcurl4-openssl-dev,
                librdkafka-dev (>= 0.9.1),
                libkrb5-dev,
                libgnutls28-dev,
@@ -20,6 +21,7 @@ Build-Depends: debhelper-compat (= 13),
                liblognorm-dev (>= 2.0.3),
                libfastjson-dev (>= 0.99.8),
                libczmq-dev (>= 3.0.2),
+               libsnmp-dev,
                uuid-dev,
                libsystemd-dev (>= 209) [linux-any],
                pkg-config,
@@ -33,15 +35,14 @@ Build-Depends: debhelper-compat (= 13),
                logrotate <!nocheck>,
                iproute2 [linux-any] <!nocheck>,
                curl <!nocheck>,
-Standards-Version: 4.6.0
+Standards-Version: 4.6.2
 Rules-Requires-Root: no
-#Vcs-Git
-#Vcs-Browser
+Vcs-Git: https://salsa.debian.org/debian/rsyslog.git
+Vcs-Browser: https://salsa.debian.org/debian/rsyslog
 Homepage: https://www.rsyslog.com/
 
 Package: rsyslog
 Architecture: any
-Priority: important
 Conflicts: system-log-daemon,
            linux-kernel-log-daemon
 Provides: system-log-daemon,
@@ -74,7 +75,6 @@ Description: reliable system and kernel logging daemon
 
 Package: rsyslog-mysql
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version}),
@@ -87,7 +87,6 @@ Description: MySQL output plugin for rsyslog
 
 Package: rsyslog-pgsql
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version}),
@@ -101,7 +100,6 @@ Description: PostgreSQL output plugin for rsyslog
 
 Package: rsyslog-mongodb
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version}),
@@ -112,7 +110,6 @@ Description: MongoDB output plugin for rsyslog
 
 Package: rsyslog-elasticsearch
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version}),
@@ -123,7 +120,6 @@ Description: Elasticsearch output plugin for rsyslog
 
 Package: rsyslog-kafka
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version}),
@@ -134,7 +130,6 @@ Description: Apache Kafka support for rsyslog
 
 Package: rsyslog-gssapi
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version})
@@ -146,28 +141,25 @@ Description: GSSAPI authentication and encryption support for rsyslog
 
 Package: rsyslog-gnutls
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version})
 Suggests: gnutls-bin
 Description: TLS protocol support for rsyslog (GnuTLS)
  This netstream plugin allows rsyslog to send and receive encrypted syslog
- messages via the syslog-transport-tls IETF standard protocol.
+ messages via the syslog-transport-tls IETF standard protocol using GnuTLS.
 
 Package: rsyslog-openssl
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version})
 Description: TLS protocol support for rsyslog (OpenSSL)
  This netstream plugin allows rsyslog to send and receive encrypted syslog
- messages via the syslog-transport-tls IETF standard protocol.
+ messages via the syslog-transport-tls IETF standard protocol using OpenSSL.
 
 Package: rsyslog-relp
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version})
@@ -178,17 +170,15 @@ Description: RELP protocol support for rsyslog
 
 Package: rsyslog-czmq
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version})
 Description: ZeroMQ protocol support for rsyslog via CZMQ
- These plugins allows rsyslog to send and receive ZeroMQ syslog
+ These plugins allow rsyslog to send and receive ZeroMQ syslog
  messages via the CZMQ library.
 
 Package: rsyslog-hiredis
 Architecture: any
-Priority: optional
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          rsyslog (= ${binary:Version})
@@ -196,3 +186,21 @@ Description: Redis output plugin for rsyslog
  This plugin allows rsyslog to write syslog messages to Redis, a
  key-value database in a similar vein to memcache but the dataset
  is non-volatile.
+
+Package: rsyslog-snmp
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         rsyslog (= ${binary:Version})
+Description: SNMP protocol support for rsyslog
+ This plugin allows rsyslog to send syslog messages via SNMPv1 and SNMPv2c
+ traps. By default, SNMPv2c is preferred.
+
+Package: rsyslog-kubernetes
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         rsyslog (= ${binary:Version})
+Description: Kubernetes metadata support for rsyslog
+ These plugins allow rsyslog to augment syslog messages with Kubernetes
+ metadata.

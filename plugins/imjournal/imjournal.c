@@ -35,6 +35,7 @@
 #include <sys/socket.h>
 #include <errno.h>
 #include <systemd/sd-journal.h>
+#include <fcntl.h>
 
 #include "dirty.h"
 #include "cfsysline.h"
@@ -67,11 +68,13 @@ DEFobjCurrIf(net)
 DEFobjCurrIf(statsobj)
 
 struct modConfData_s {
+	rsconf_t *pConf;
 	int bIgnPrevMsg;
 };
 
 static struct configSettings_s {
 	char *stateFile;
+	int fCreateMode; /* default mode to use when creating new files, e.g. stateFile */
 	int iPersistStateInterval;
 	unsigned int ratelimitInterval;
 	unsigned int ratelimitBurst;
@@ -91,6 +94,7 @@ static rsRetVal facilityHdlr(uchar **pp, void *pVal);
 /* module-global parameters */
 static struct cnfparamdescr modpdescr[] = {
 	{ "statefile", eCmdHdlrGetWord, 0 },
+	{ "filecreatemode", eCmdHdlrFileCreateMode, 0 },
 	{ "ratelimit.interval", eCmdHdlrInt, 0 },
 	{ "ratelimit.burst", eCmdHdlrInt, 0 },
 	{ "persiststateinterval", eCmdHdlrInt, 0 },
@@ -141,6 +145,8 @@ struct journalContext_s { /* structure encapsulating all the journald_API-relate
 	char *cursor; /* should point to last valid journald entry we processed */
 };
 static struct journalContext_s journalContext = {NULL, 0, 1, NULL};
+static modConfData_t *loadModConf = NULL;/* modConf ptr to use for the current load process */
+static modConfData_t *runModConf = NULL;/* modConf ptr to use for run process */
 
 #define J_PROCESS_PERIOD 1024  /* Call sd_journal_process() every 1,024 records */
 
@@ -158,7 +164,7 @@ static rsRetVal openJournal(void) {
 		LogError(-r, RS_RET_IO_ERROR, "imjournal: sd_journal_open() failed");
 		iRet = RS_RET_IO_ERROR;
 	}
-	if ((r = sd_journal_set_data_threshold(journalContext.j, glbl.GetMaxLine())) < 0) {
+	if ((r = sd_journal_set_data_threshold(journalContext.j, glbl.GetMaxLine(runModConf->pConf))) < 0) {
 		LogError(-r, RS_RET_IO_ERROR, "imjournal: sd_journal_set_data_threshold() failed");
 		iRet = RS_RET_IO_ERROR;
 	}
@@ -449,6 +455,8 @@ readjournal(void)
 	/* Get message identifier, client pid and add ':' */
 	if (journalGetData("SYSLOG_IDENTIFIER", &get, &length) >= 0) {
 		CHKiRet(sanitizeValue(((const char *)get) + 18, length - 18, &sys_iden));
+	} else if (journalGetData("_COMM", &get, &length) >= 0) {
+		CHKiRet(sanitizeValue(((const char *)get) + 6, length - 6, &sys_iden));
 	} else {
 		CHKmalloc(sys_iden = strdup("journal"));
 	}
@@ -518,8 +526,10 @@ static rsRetVal
 persistJournalState(void)
 {
 	DEFiRet;
-	FILE *sf = NULL; /* state file */
 	char tmp_sf[MAXFNAME];
+	int fd = -1;
+	size_t len;
+	ssize_t wr_ret;
 
 	DBGPRINTF("Persisting journal position, cursor: %s, at head? %d\n",
 			  journalContext.cursor, journalContext.atHead);
@@ -551,18 +561,19 @@ persistJournalState(void)
 			(int)(sizeof(tmp_sf) - sizeof(IM_SF_TMP_SUFFIX)),
 			cs.stateFile, IM_SF_TMP_SUFFIX);
 
-	sf = fopen(tmp_sf, "wb");
-	if (sf == NULL) {
-		LogError(errno, RS_RET_FOPEN_FAILURE, "imjournal: fopen() failed for path: '%s'", tmp_sf);
-		ABORT_FINALIZE(RS_RET_FOPEN_FAILURE);
+	fd = open((char*) tmp_sf, O_WRONLY|O_CREAT|O_CLOEXEC, cs.fCreateMode);
+	if (fd == -1) {
+		LogError(errno, RS_RET_FILE_OPEN_ERROR, "imjournal: open() failed for path: '%s'", tmp_sf);
+		ABORT_FINALIZE(RS_RET_FILE_OPEN_ERROR);
 	}
 
-	if(fputs(journalContext.cursor, sf) == EOF) {
-		LogError(errno, RS_RET_IO_ERROR, "imjournal: failed to save cursor to: '%s'", tmp_sf);
+	len = strlen(journalContext.cursor);
+	wr_ret = write(fd, journalContext.cursor, len);
+	if (wr_ret != (ssize_t)len) {
+		LogError(errno, RS_RET_IO_ERROR, "imjournal: failed to save cursor to: '%s',"
+			"write returned %zd, expected %zu", cs.stateFile, wr_ret, len);
 		ABORT_FINALIZE(RS_RET_IO_ERROR);
 	}
-
-	fflush(sf);
 
 	/* change the name of the file to the configured one */
 	if (rename(tmp_sf, cs.stateFile) < 0) {
@@ -571,18 +582,20 @@ persistJournalState(void)
 	}
 
 	if (cs.bFsync) {
-		if (fsync(fileno(sf)) != 0) {
+		if (fsync(fd) != 0) {
 			LogError(errno, RS_RET_IO_ERROR, "imjournal: fsync on '%s' failed", cs.stateFile);
 			ABORT_FINALIZE(RS_RET_IO_ERROR);
 		}
 		/* In order to guarantee physical write we need to force parent sync as well */
 		DIR *wd;
-		if (!(wd = opendir((char *)glbl.GetWorkDir()))) {
-			LogError(errno, RS_RET_IO_ERROR, "imjournal: failed to open '%s' directory", glbl.GetWorkDir());
+		if (!(wd = opendir((char *)glbl.GetWorkDir(runModConf->pConf)))) {
+			LogError(errno, RS_RET_IO_ERROR, "imjournal: failed to open '%s' directory",
+				glbl.GetWorkDir(runModConf->pConf));
 			ABORT_FINALIZE(RS_RET_IO_ERROR);
 		}
 		if (fsync(dirfd(wd)) != 0) {
-			LogError(errno, RS_RET_IO_ERROR, "imjournal: fsync on '%s' failed", glbl.GetWorkDir());
+			LogError(errno, RS_RET_IO_ERROR, "imjournal: fsync on '%s' failed",
+				glbl.GetWorkDir(runModConf->pConf));
 			ABORT_FINALIZE(RS_RET_IO_ERROR);
 		}
 
@@ -592,9 +605,9 @@ persistJournalState(void)
 	DBGPRINTF("Persisted journal to '%s'\n", cs.stateFile);
 
 finalize_it:
-	if (sf != NULL) {
-		if (fclose(sf) == EOF) {
-			LogError(errno, RS_RET_IO_ERROR, "imjournal: fclose() failed for path: '%s'", tmp_sf);
+	if (fd != -1) {
+		if (close(fd) == -1) {
+			LogError(errno, RS_RET_IO_ERROR, "imjournal: close() failed for path: '%s'", tmp_sf);
 			iRet = RS_RET_IO_ERROR;
 		}
 	}
@@ -810,7 +823,7 @@ CODESTARTrunInput
 		free(cs.usePid);
 		cs.usePid = strdup("system");
 		LogError(0, RS_RET_DEPRECATED,
-			"\"usepidfromsystem\" is depricated, use \"usepid\" instead");
+			"\"usepidfromsystem\" is deprecated, use \"usepid\" instead");
 	}
 
 	if (cs.usePid && (strcmp(cs.usePid, "system") == 0)) {
@@ -884,11 +897,14 @@ ENDrunInput
 
 BEGINbeginCnfLoad
 CODESTARTbeginCnfLoad
+	loadModConf = pModConf;
+	pModConf->pConf = pConf;
 	bLegacyCnfModGlobalsPermitted = 1;
 
 	cs.bIgnoreNonValidStatefile = 1;
 	cs.iPersistStateInterval = DFLT_persiststateinterval;
 	cs.stateFile = NULL;
+	cs.fCreateMode = -1;
 	cs.ratelimitBurst = 20000;
 	cs.ratelimitInterval = 600;
 	cs.iDfltSeverity = DFLT_SEVERITY;
@@ -906,9 +922,10 @@ CODESTARTendCnfLoad
 	/* bad trick to handle old and new style config all in old-style var */
 	if(cs.stateFile != NULL && cs.stateFile[0] != '/') {
 		char *new_stateFile;
-		if (-1 == asprintf(&new_stateFile, "%s/%s", (char *)glbl.GetWorkDir(), cs.stateFile)) {
-			LogError(0, RS_RET_OUT_OF_MEMORY, "imjournal: asprintf failed\n");
-			ABORT_FINALIZE(RS_RET_OUT_OF_MEMORY);
+		if (-1 == asprintf(&new_stateFile, "%s/%s",
+			(char *)glbl.GetWorkDir(loadModConf->pConf), cs.stateFile)) {
+				LogError(0, RS_RET_OUT_OF_MEMORY, "imjournal: asprintf failed\n");
+				ABORT_FINALIZE(RS_RET_OUT_OF_MEMORY);
 		}
 		free (cs.stateFile);
 		cs.stateFile = new_stateFile;
@@ -924,6 +941,7 @@ ENDcheckCnf
 
 BEGINactivateCnf
 CODESTARTactivateCnf
+	runModConf = pModConf;
 
 	/* support statistic gathering */
 	CHKiRet(statsobj.Construct(&(statsCounter.stats)));
@@ -982,7 +1000,9 @@ CODESTARTafterRun
 		persistJournalState();
 	}
 	closeJournal();
-	ratelimitDestruct(ratelimiter);
+	if (ratelimiter) {
+		ratelimitDestruct(ratelimiter);
+	}
 ENDafterRun
 
 
@@ -1026,6 +1046,8 @@ CODESTARTsetModCnf
 			cs.iPersistStateInterval = (int) pvals[i].val.d.n;
 		} else if (!strcmp(modpblk.descr[i].name, "statefile")) {
 			cs.stateFile = (char *)es_str2cstr(pvals[i].val.d.estr, NULL);
+		} else if(!strcmp(modpblk.descr[i].name, "filecreatemode")) {
+			cs.fCreateMode = (int) pvals[i].val.d.n;
 		} else if(!strcmp(modpblk.descr[i].name, "ratelimit.burst")) {
 			cs.ratelimitBurst = (unsigned int) pvals[i].val.d.n;
 		} else if(!strcmp(modpblk.descr[i].name, "ratelimit.interval")) {
@@ -1059,6 +1081,14 @@ CODESTARTsetModCnf
 			dbgprintf("imjournal: program error, non-handled "
 				"param '%s' in beginCnfLoad\n", modpblk.descr[i].name);
 		}
+	}
+
+	/* File create mode is not set */
+	if (cs.fCreateMode == -1) {
+		const int fCreateMode = 0644;
+		LogMsg(0, RS_RET_OK_WARN, LOG_WARNING, "imjournal: filecreatemode is not set, "
+			"using default %04o", fCreateMode);
+		cs.fCreateMode = fCreateMode;
 	}
 
 finalize_it:

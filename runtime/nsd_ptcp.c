@@ -53,6 +53,7 @@
 #include "nsd_ptcp.h"
 #include "prop.h"
 #include "dnscache.h"
+#include "rsconf.h"
 
 MODULE_TYPE_LIB
 MODULE_TYPE_NOKEEP
@@ -245,6 +246,19 @@ SetTlsCAFile(nsd_t __attribute__((unused)) *pNsd, const uchar *const pszFile)
 	DEFiRet;
 	if(pszFile != NULL) {
 		LogError(0, RS_RET_VALUE_NOT_SUPPORTED, "error: CA File setting not supported by "
+				"ptcp netstream driver - value %s", pszFile);
+		ABORT_FINALIZE(RS_RET_VALUE_NOT_SUPPORTED);
+	}
+finalize_it:
+	RETiRet;
+}
+
+static rsRetVal
+SetTlsCRLFile(nsd_t __attribute__((unused)) *pNsd, const uchar *const pszFile)
+{
+	DEFiRet;
+	if(pszFile != NULL) {
+		LogError(0, RS_RET_VALUE_NOT_SUPPORTED, "error: CRL File setting not supported by "
 				"ptcp netstream driver - value %s", pszFile);
 		ABORT_FINALIZE(RS_RET_VALUE_NOT_SUPPORTED);
 	}
@@ -542,7 +556,7 @@ LstnInit(netstrms_t *const pNS, void *pUsr, rsRetVal(*fAddLstn)(void*,netstrm_t*
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_flags = AI_PASSIVE;
-	hints.ai_family = glbl.GetDefPFFamily();
+	hints.ai_family = glbl.GetDefPFFamily(runConf);
 	hints.ai_socktype = SOCK_STREAM;
 
 	error = getaddrinfo((const char*)cnf_params->pszAddr, (const char*) cnf_params->pszPort, &hints, &res);
@@ -704,6 +718,7 @@ LstnInit(netstrms_t *const pNS, void *pUsr, rsRetVal(*fAddLstn)(void*,netstrm_t*
 		CHKiRet(pNS->Drvr.SetCheckExtendedKeyUsage(pNewNsd, netstrms.GetDrvrCheckExtendedKeyUsage(pNS)));
 		CHKiRet(pNS->Drvr.SetPrioritizeSAN(pNewNsd, netstrms.GetDrvrPrioritizeSAN(pNS)));
 		CHKiRet(pNS->Drvr.SetTlsCAFile(pNewNsd, netstrms.GetDrvrTlsCAFile(pNS)));
+		CHKiRet(pNS->Drvr.SetTlsCRLFile(pNewNsd, netstrms.GetDrvrTlsCRLFile(pNS)));
 		CHKiRet(pNS->Drvr.SetTlsKeyFile(pNewNsd, netstrms.GetDrvrTlsKeyFile(pNS)));
 		CHKiRet(pNS->Drvr.SetTlsCertFile(pNewNsd, netstrms.GetDrvrTlsCertFile(pNS)));
 		CHKiRet(pNS->Drvr.SetTlsVerifyDepth(pNewNsd, netstrms.GetDrvrTlsVerifyDepth(pNS)));
@@ -757,7 +772,7 @@ finalize_it:
  * the number of octets read (or -1 in case of error) on exit. This function
  * never blocks, not even when called on a blocking socket. That is important
  * for client sockets, which are set to block during send, but should not
- * block when trying to read data. If *pLenBuf is -1, an error occured and
+ * block when trying to read data. If *pLenBuf is -1, an error occurred and
  * oserr holds the exact error cause.
  * rgerhards, 2008-03-17
  */
@@ -1068,6 +1083,7 @@ CODESTARTobjQueryInterface(nsd_ptcp)
 	pIf->SetPrioritizeSAN = SetPrioritizeSAN;
 	pIf->SetTlsVerifyDepth = SetTlsVerifyDepth;
 	pIf->SetTlsCAFile = SetTlsCAFile;
+	pIf->SetTlsCRLFile = SetTlsCRLFile;
 	pIf->SetTlsKeyFile = SetTlsKeyFile;
 	pIf->SetTlsCertFile = SetTlsCertFile;
 finalize_it:

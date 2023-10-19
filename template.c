@@ -163,6 +163,7 @@ tplToString(struct template *__restrict__ const pTpl,
 	unsigned short bMustBeFreed = 0;
 	uchar *pVal;
 	rs_size_t iLenVal = 0;
+	int need_comma = 0;
 
 	if(pTpl->pStrgen != NULL) {
 		CHKiRet(pTpl->pStrgen(pMsg, iparam));
@@ -230,13 +231,22 @@ tplToString(struct template *__restrict__ const pTpl,
 			if(iBuf + iLenVal + extra_space >= iparam->lenBuf) /* we reserve one char for the final \0! */
 				CHKiRet(ExtendBuf(iparam, iBuf + iLenVal + 1));
 
+			if(need_comma) {
+				memcpy(iparam->param + iBuf, ", ", 2);
+				iBuf += 2;
+			}
 			memcpy(iparam->param + iBuf, pVal, iLenVal);
 			iBuf += iLenVal;
 			if(pTpl->optFormatEscape == JSONF) {
-				memcpy(iparam->param + iBuf,
-					(pTpe->pNext == NULL) ? "}\n" : ", ", 2);
-				iBuf += 2;
+				need_comma = 1;
 			}
+		}
+
+		if((pTpl->optFormatEscape == JSONF) && (pTpe->pNext == NULL)) {
+			/* space was reserved while processing field above
+			   (via extra_space in ExtendBuf() new size formula. */
+			memcpy(iparam->param + iBuf, "}\n", 2);
+			iBuf += 2;
 		}
 
 		if(bMustBeFreed) {
@@ -544,7 +554,7 @@ tplConstruct(rsconf_t *conf)
 
 /* helper to tplAddLine. Parses a constant and generates
  * the necessary structure.
- * Paramter "bDoEscapes" is to support legacy vs. v6+ config system. In
+ * Parameter "bDoEscapes" is to support legacy vs. v6+ config system. In
  * legacy, we must do escapes ourselves, whereas v6+ passes in already
  * escaped strings (which we are NOT permitted to further escape, this would
  * cause invalid result strings!). Note: if escapes are not permitted,
@@ -724,6 +734,10 @@ static void doOptions(unsigned char **pp, struct templateEntry *pTpe)
 			pTpe->data.field.eDateFormat = tplFmtOrdinal;
 		} else if (!strcmp((char*)Buf, "date-week")) {
 			pTpe->data.field.eDateFormat = tplFmtWeek;
+		} else if (!strcmp((char*)Buf, "date-iso-week")) {
+			pTpe->data.field.eDateFormat = tplFmtISOWeek;
+		} else if (!strcmp((char*)Buf, "date-iso-week-year")) {
+			pTpe->data.field.eDateFormat = tplFmtISOWeekYear;
 		} else if(!strcmp((char*)Buf, "date-utc")) {
 			pTpe->data.field.options.bDateInUTC = 1;
 		} else if(!strcmp((char*)Buf, "lowercase")) {
@@ -1457,7 +1471,8 @@ createPropertyTpe(struct template *pTpl, struct cnfobj *o)
 	int spifno1stsp = 0;
 	int mandatory = 0;
 	int frompos = -1;
-	int topos = -1;
+	int topos = 0;
+	int topos_set = 0;
 	int fieldnum = -1;
 	int fielddelim = 9; /* default is HT (USACSII 9) */
 	int fixedwidth = 0;
@@ -1541,6 +1556,7 @@ createPropertyTpe(struct template *pTpl, struct cnfobj *o)
 			bComplexProcessing = 1;
 		} else if(!strcmp(pblkProperty.descr[i].name, "position.to")) {
 			topos = pvals[i].val.d.n;
+			topos_set = 1;
 			bComplexProcessing = 1;
 		} else if(!strcmp(pblkProperty.descr[i].name, "position.relativetoend")) {
 			bPosRelativeToEnd = pvals[i].val.d.n;
@@ -1722,9 +1738,9 @@ createPropertyTpe(struct template *pTpl, struct cnfobj *o)
 	}
 
 	/* sanity check */
-	if(topos == -1 && frompos != -1)
+	if(topos_set == 0 && frompos != -1)
 		topos = 2000000000; /* large enough ;) */
-	if(frompos == -1 && topos != -1)
+	if(frompos == -1 && topos_set != 0)
 		frompos = 0;
 	if(bPosRelativeToEnd) {
 		if(topos > frompos) {
@@ -1733,7 +1749,7 @@ createPropertyTpe(struct template *pTpl, struct cnfobj *o)
 			ABORT_FINALIZE(RS_RET_ERR);
 		}
 	} else {
-		if(topos < frompos) {
+		if((topos >= 0) && (topos < frompos)) {
 			LogError(0, RS_RET_ERR, "position.to=%d is lower than postion.from=%d\n",
 				topos, frompos);
 			ABORT_FINALIZE(RS_RET_ERR);
@@ -2235,7 +2251,7 @@ void tplDeleteNew(rsconf_t *conf)
 	}
 }
 
-/* Store the pointer to the last hardcoded teplate */
+/* Store the pointer to the last hardcoded template */
 void tplLastStaticInit(rsconf_t *conf, struct template *tpl)
 {
 	conf->templates.lastStatic = tpl;
@@ -2397,7 +2413,7 @@ void tplPrintList(rsconf_t *conf)
 				  	dbgprintf("[drop last LF in msg] ");
 				}
 				if(pTpe->data.field.has_fields == 1) {
-				  	dbgprintf("[substring, field #%d only (delemiter %d)] ",
+				  	dbgprintf("[substring, field #%d only (delimiter %d)] ",
 						pTpe->data.field.iFieldNr, pTpe->data.field.field_delim);
 				}
 				if(pTpe->data.field.iFromPos != 0 || pTpe->data.field.iToPos != 0) {

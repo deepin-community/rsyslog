@@ -1,0 +1,3 @@
+Tests: logcheck
+Depends: rsyslog, logcheck, coreutils
+Restrictions: needs-root, breaks-testbed

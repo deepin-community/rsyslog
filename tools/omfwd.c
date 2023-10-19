@@ -90,6 +90,7 @@ typedef struct _instanceData {
 	int iStrmDrvrSANPreference; /* ignore CN when any SAN set */
 	int iStrmTlsVerifyDepth; /**< Verify Depth for certificate chains */
 	const uchar *pszStrmDrvrCAFile;
+	const uchar *pszStrmDrvrCRLFile;
 	const uchar *pszStrmDrvrKeyFile;
 	const uchar *pszStrmDrvrCertFile;
 	char	*target;
@@ -434,6 +435,7 @@ CODESTARTfreeInstance
 	free(pData->address);
 	free(pData->device);
 	free((void*)pData->pszStrmDrvrCAFile);
+	free((void*)pData->pszStrmDrvrCRLFile);
 	free((void*)pData->pszStrmDrvrKeyFile);
 	free((void*)pData->pszStrmDrvrCertFile);
 	net.DestructPermittedPeers(&pData->pPermPeers);
@@ -827,6 +829,7 @@ static rsRetVal TCPSendInit(void *pvData)
 		CHKiRet(netstrm.SetDrvrPermitExpiredCerts(pWrkrData->pNetstrm,
 			pData->pszStrmDrvrPermitExpiredCerts));
 		CHKiRet(netstrm.SetDrvrTlsCAFile(pWrkrData->pNetstrm, pData->pszStrmDrvrCAFile));
+		CHKiRet(netstrm.SetDrvrTlsCRLFile(pWrkrData->pNetstrm, pData->pszStrmDrvrCRLFile));
 		CHKiRet(netstrm.SetDrvrTlsKeyFile(pWrkrData->pNetstrm, pData->pszStrmDrvrKeyFile));
 		CHKiRet(netstrm.SetDrvrTlsCertFile(pWrkrData->pNetstrm, pData->pszStrmDrvrCertFile));
 
@@ -837,7 +840,7 @@ static rsRetVal TCPSendInit(void *pvData)
 		if(pData->gnutlsPriorityString != NULL) {
 			CHKiRet(netstrm.SetGnutlsPriorityString(pWrkrData->pNetstrm, pData->gnutlsPriorityString));
 		}
-		CHKiRet(netstrm.Connect(pWrkrData->pNetstrm, glbl.GetDefPFFamily(),
+		CHKiRet(netstrm.Connect(pWrkrData->pNetstrm, glbl.GetDefPFFamily(runModConf->pConf),
 			(uchar*)pData->port, (uchar*)pData->target, pData->device));
 
 		/* set keep-alive if enabled */
@@ -964,7 +967,7 @@ static rsRetVal doTryResume(wrkrInstanceData_t *pWrkrData)
 		memset(&hints, 0, sizeof(hints));
 		/* port must be numeric, because config file syntax requires this */
 		hints.ai_flags = AI_NUMERICSERV;
-		hints.ai_family = glbl.GetDefPFFamily();
+		hints.ai_family = glbl.GetDefPFFamily(runModConf->pConf);
 		hints.ai_socktype = SOCK_DGRAM;
 		if((iErr = (getaddrinfo(pData->target, pData->port, &hints, &res))) != 0) {
 			LogError(0, RS_RET_SUSPENDED,
@@ -1050,7 +1053,7 @@ processMsg(wrkrInstanceData_t *__restrict__ const pWrkrData,
 	instanceData *__restrict__ const pData = pWrkrData->pData;
 	DEFiRet;
 
-	iMaxLine = glbl.GetMaxLine();
+	iMaxLine = glbl.GetMaxLine(runModConf->pConf);
 
 	psz = iparam->param;
 	l = iparam->lenStr;
@@ -1214,6 +1217,7 @@ setInstParamDefaults(instanceData *pData)
 	pData->iStrmDrvrSANPreference = 0;
 	pData->iStrmTlsVerifyDepth = 0;
 	pData->pszStrmDrvrCAFile = NULL;
+	pData->pszStrmDrvrCRLFile = NULL;
 	pData->pszStrmDrvrKeyFile = NULL;
 	pData->pszStrmDrvrCertFile = NULL;
 	pData->iRebindInterval = 0;
@@ -1376,6 +1380,8 @@ CODESTARTnewActInst
 			}
 		} else if(!strcmp(actpblk.descr[i].name, "streamdriver.cafile")) {
 			pData->pszStrmDrvrCAFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
+		} else if(!strcmp(actpblk.descr[i].name, "streamdriver.crlfile")) {
+			pData->pszStrmDrvrCRLFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(actpblk.descr[i].name, "streamdriver.keyfile")) {
 			pData->pszStrmDrvrKeyFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(actpblk.descr[i].name, "streamdriver.certfile")) {
@@ -1412,7 +1418,7 @@ CODESTARTnewActInst
 				pData->compressionMode = COMPRESS_SINGLE_MSG;
 			} else {
 				LogError(0, NO_ERRCODE, "Invalid ziplevel %d specified in "
-					 "forwardig action - NOT turning on compression.",
+					 "forwarding action - NOT turning on compression.",
 					 complevel);
 			}
 		} else if(!strcmp(actpblk.descr[i].name, "tcp_framedelimiter")) {
@@ -1568,7 +1574,7 @@ CODE_STD_STRING_REQUESTparseSelectorAct(1)
 					pData->compressionMode = COMPRESS_SINGLE_MSG;
 				} else {
 					LogError(0, NO_ERRCODE, "Invalid compression level '%c' specified in "
-						 "forwardig action - NOT turning on compression.",
+						 "forwarding action - NOT turning on compression.",
 						 *p);
 				}
 			} else if(*p == 'o') { /* octet-couting based TCP framing? */

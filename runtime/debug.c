@@ -250,7 +250,7 @@ r_dbgoprint( const char *srcname, obj_t *pObj, const char *fmt, ...)
 
 	if(!(Debug && debugging_on))
 		return;
-	
+
 	if(!checkDbgFile(srcname)) {
 		return;
 	}
@@ -392,7 +392,7 @@ dbgGetRuntimeOptions(void)
 				/* Enables debugging, but turns off debug output */
 				Debug = DEBUG_ONDEMAND;
 				debugging_on = 1;
-				dbgprintf("Note: debug on demand turned on via configuraton file, "
+				dbgprintf("Note: debug on demand turned on via configuration file, "
 					  "use USR1 signal to activate.\n");
 				debugging_on = 0;
 			} else if(!strcasecmp((char*)optname, "nologtimestamp")) {
@@ -435,7 +435,7 @@ rsRetVal dbgClassInit(void)
 {
 	rsRetVal iRet;	/* do not use DEFiRet, as this makes calls into the debug system! */
 
-	
+
 	(void) pthread_key_create(&keyThrdName, dbgThrdNameDestruct);
 
 	/* while we try not to use any of the real rsyslog code (to avoid infinite loops), we

@@ -33,6 +33,11 @@ typedef enum {
 	gtlsRtry_recv = 2
 } gtlsRtryCall_t;		/**< IDs of calls that needs to be retried */
 
+typedef enum {
+	gtlsDir_READ = 0,	/**< GNUTLS wants READ */
+	gtlsDir_WRITE = 1	/**< GNUTLS wants WRITE */
+} gtlsDirection_t;
+
 typedef nsd_if_t nsd_gtls_if_t; /* we just *implement* this interface */
 
 /* the nsd_gtls object */
@@ -42,6 +47,7 @@ struct nsd_gtls_s {
 	uchar *pszConnectHost;	/**< hostname used for connect - may be used to
 					authenticate peer if no other name given */
 	const uchar *pszCAFile;
+	const uchar *pszCRLFile;
 	const uchar *pszKeyFile;
 	const uchar *pszCertFile;
 	gnutls_certificate_credentials_t xcred;
