@@ -281,7 +281,7 @@ finalize_it:
  * Modules may call it to get access to core interface functions. Please note
  * that utility functions can be accessed via shared libraries - at least this
  * is my current shool of thinking.
- * Please note that the implementation as a query interface allows to take
+ * Please note that the implementation as a query interface allows one to take
  * care of plug-in interface version differences. -- rgerhards, 2007-07-31
  * ... but often it better not to use a new interface. So we now add core
  * functions here that a plugin may request. -- rgerhards, 2009-04-22
@@ -595,7 +595,7 @@ doModInit(pModInit_t modInit, uchar *name, void *pModHdlr, modInfo_t **pNewModul
 	CHKiRet((*pNew->modQueryEtryPt)((uchar*)"getKeepType", &modGetKeepType));
 	CHKiRet((*modGetKeepType)(&pNew->eKeepType));
 	dbgprintf("module %s of type %d being loaded (keepType=%d).\n", name, pNew->eType, pNew->eKeepType);
-	
+
 	/* OK, we know we can successfully work with the module. So we now fill the
 	 * rest of the data elements. First we load the interfaces common to all
 	 * module types.
@@ -1242,7 +1242,7 @@ Load(uchar *const pModName, const sbool bConfLoad, struct nvlst *const lst)
 		}
 
 		iLoadCnt++;
-	
+
 	} while(pModHdlr == NULL && *pModName != '/' && pModDirNext);
 
 	if(load_err_msg != NULL) {
@@ -1323,7 +1323,7 @@ modulesProcessCnf(struct cnfobj *o)
 
 	cnfModName = (uchar*)es_str2cstr(pvals[typeIdx].val.d.estr, NULL);
 	iRet = Load(cnfModName, 1, o->nvlst);
-	
+
 finalize_it:
 	free(cnfModName);
 	cnfparamvalsDestruct(pvals, &pblk);

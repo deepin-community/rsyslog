@@ -50,6 +50,8 @@ struct nsd_ossl_s {
 	int iMode;		/* 0 - plain tcp, 1 - TLS */
 	int bAbortConn;		/* if set, abort conncection (fatal error had happened) */
 	const uchar *pszCAFile;
+	const uchar *pszCRLFile;
+	const uchar *pszExtraCAFiles;
 	const uchar *pszKeyFile;
 	const uchar *pszCertFile;
 	enum {
@@ -105,7 +107,7 @@ rsRetVal osslRecordRecv(nsd_ossl_t *pThis);
 rsRetVal osslHandshakeCheck(nsd_ossl_t *pNsd);
 
 /* some more prototypes to avoid warnings ... */
-void osslLastSSLErrorMsg(int ret, SSL *ssl, int severity, const char* pszCallSource);
+void osslLastSSLErrorMsg(int ret, SSL *ssl, int severity, const char* pszCallSource, const char* pszOsslApi);
 int verify_callback(int status, X509_STORE_CTX *store);
 rsRetVal osslPostHandshakeCheck(nsd_ossl_t *pNsd);
 

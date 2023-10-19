@@ -1,5 +1,33 @@
-rsyslog (8.2110.0.1.1-deepin) stable; urgency=medium
+rsyslog (8.2310.0-1) unstable; urgency=medium
 
-  * ['Rebuild  against by  current gcc 11.2']
+  Enable various systemd sandboxing and security hardening features in
+  rsyslog.service.
 
- -- Deepin Packages Builder <packages@deepin.org>  Wed, 10 Aug 2022 21:27:44 +0800
+  The command "systemd-analyze security rsyslog.service" provides an overview
+  of the active security and sandboxing settings.
+
+  Should you run a custom setup which is broken by those changes, you can
+  disable individual settings by creating a drop-in config file for
+  rsyslog.service via "systemctl edit rsyslog.service".
+
+  See also "man capabilities" and "man systemd.exec".
+
+ -- Michael Biebl <biebl@debian.org>  Tue, 10 Oct 2023 17:03:41 +0200
+
+rsyslog (5.8.1-1) unstable; urgency=low
+
+  The way rsyslog processes SIGHUP has changed. It no longer does a reload
+  of its configuration, but simply closes all open files, which is a much more
+  lightweight operation.
+  To apply a changed configuration, rsyslogd needs to be restarted now.
+  As a consequence, the reload action has been dropped from the init script.
+
+  A new action called "rotate" was added to the init script, which signals
+  rsyslogd to close all open files. This new action is used in the rsyslog
+  logrotate configuration file.
+
+  For more information, see:
+  http://www.rsyslog.com/doc/v4compatibility.html
+  http://www.rsyslog.com/doc/v5compatibility.html
+
+ -- Michael Biebl <biebl@debian.org>  Mon, 30 May 2011 18:26:51 +0200

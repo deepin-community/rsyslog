@@ -4,7 +4,7 @@
  * File begun on 2007-12-21 by RGerhards (extracted from syslogd.c,
  * which at the time of the rsyslog fork was BSD-licensed)
  *
- * Copyright 2007-2021 Adiscon GmbH.
+ * Copyright 2007-2022 Adiscon GmbH.
  *
  * This file is part of rsyslog.
  *
@@ -63,7 +63,7 @@
 #include "tcpsrv.h"
 #include "ruleset.h"
 #include "rainerscript.h"
-#include "net.h" /* for permittedPeers, may be removed when this is removed */
+#include "net.h"
 #include "parserif.h"
 
 MODULE_TYPE_INPUT
@@ -104,6 +104,7 @@ static struct configSettings_s {
 	int iKeepAliveProbes;
 	int iKeepAliveTime;
 	int bEmitMsgOnClose;
+	int bEmitMsgOnOpen;
 	int iAddtlFrameDelim;
 	int maxFrameSize;
 	int bDisableLFDelim;
@@ -136,14 +137,17 @@ struct instanceConf_s {
 	int bDisableLFDelim;
 	int discardTruncatedMsg;
 	int bEmitMsgOnClose;
+	int bEmitMsgOnOpen;
 	int bPreserveCase;
 	uchar *pszStrmDrvrName; /* stream driver to use */
 	int iStrmDrvrMode;
 	uchar *pszStrmDrvrAuthMode;
 	uchar *pszStrmDrvrPermitExpiredCerts;
 	uchar *pszStrmDrvrCAFile;
+	uchar *pszStrmDrvrCRLFile;
 	uchar *pszStrmDrvrKeyFile;
 	uchar *pszStrmDrvrCertFile;
+	permittedPeers_t *pPermPeersRoot;
 	uchar *gnutlsPriorityString;
 	int iStrmDrvrExtendedCertCheck;
 	int iStrmDrvrSANPreference;
@@ -176,14 +180,16 @@ struct modConfData_s {
 	int iKeepAliveProbes;
 	int iKeepAliveTime;
 	sbool bEmitMsgOnClose; /* emit an informational message on close by remote peer */
+	sbool bEmitMsgOnOpen; /* emit an informational message on close by remote peer */
 	uchar *gnutlsPriorityString;
 	uchar *pszStrmDrvrName; /* stream driver to use */
 	uchar *pszStrmDrvrAuthMode; /* authentication mode to use */
 	uchar *pszStrmDrvrPermitExpiredCerts; /* control how to handly expired certificates */
 	uchar *pszStrmDrvrCAFile;
+	uchar *pszStrmDrvrCRLFile;
 	uchar *pszStrmDrvrKeyFile;
 	uchar *pszStrmDrvrCertFile;
-	struct cnfarray *permittedPeers;
+	permittedPeers_t *pPermPeersRoot;
 	sbool configSetViaV2Method;
 	sbool bPreserveCase; /* preserve case of fromhost; true by default */
 };
@@ -198,6 +204,7 @@ static struct cnfparamdescr modpdescr[] = {
 	{ "discardtruncatedmsg", eCmdHdlrBinary, 0 },
 	{ "octetcountedframing", eCmdHdlrBinary, 0 },
 	{ "notifyonconnectionclose", eCmdHdlrBinary, 0 },
+	{ "notifyonconnectionopen", eCmdHdlrBinary, 0 },
 	{ "addtlframedelimiter", eCmdHdlrNonNegInt, 0 },
 	{ "maxframesize", eCmdHdlrInt, 0 },
 	{ "maxsessions", eCmdHdlrPositiveInt, 0 },
@@ -233,6 +240,7 @@ static struct cnfparamdescr inppdescr[] = {
 	{ "disablelfdelimiter", eCmdHdlrBinary, 0 },
 	{ "discardtruncatedmsg", eCmdHdlrBinary, 0 },
 	{ "notifyonconnectionclose", eCmdHdlrBinary, 0 },
+	{ "notifyonconnectionopen", eCmdHdlrBinary, 0 },
 	{ "addtlframedelimiter", eCmdHdlrNonNegInt, 0 },
 	{ "maxframesize", eCmdHdlrInt, 0 },
 	{ "preservecase", eCmdHdlrBinary, 0 },
@@ -251,6 +259,7 @@ static struct cnfparamdescr inppdescr[] = {
 	{ "streamdriver.cafile", eCmdHdlrString, 0 },
 	{ "streamdriver.keyfile", eCmdHdlrString, 0 },
 	{ "streamdriver.certfile", eCmdHdlrString, 0 },
+	{ "permittedpeer", eCmdHdlrArray, 0 },
 	{ "gnutlsprioritystring", eCmdHdlrString, 0 },
 	{ "keepalive", eCmdHdlrBinary, 0 },
 	{ "keepalive.probes", eCmdHdlrNonNegInt, 0 },
@@ -348,7 +357,7 @@ createInstance(instanceConf_t **pinst)
 	instanceConf_t *inst = NULL;
 
 	DEFiRet;
-	CHKmalloc(inst = malloc(sizeof(instanceConf_t)));
+	CHKmalloc(inst = (instanceConf_t*) calloc(1, sizeof(instanceConf_t)));
 	CHKmalloc(inst->cnf_params = (tcpLstnParams_t*) calloc(1, sizeof(tcpLstnParams_t)));
 	inst->next = NULL;
 	inst->pszBindRuleset = NULL;
@@ -363,8 +372,10 @@ createInstance(instanceConf_t **pinst)
 	inst->pszStrmDrvrAuthMode = NULL;
 	inst->pszStrmDrvrPermitExpiredCerts = NULL;
 	inst->pszStrmDrvrCAFile = NULL;
+	inst->pszStrmDrvrCRLFile = NULL;
 	inst->pszStrmDrvrKeyFile = NULL;
 	inst->pszStrmDrvrCertFile = NULL;
+	inst->pPermPeersRoot = NULL;
 	inst->gnutlsPriorityString = NULL;
 	inst->iStrmDrvrMode = loadModConf->iStrmDrvrMode;
 	inst->iStrmDrvrExtendedCertCheck = loadModConf->iStrmDrvrExtendedCertCheck;
@@ -380,6 +391,7 @@ createInstance(instanceConf_t **pinst)
 	inst->bDisableLFDelim = loadModConf->bDisableLFDelim;
 	inst->discardTruncatedMsg = loadModConf->discardTruncatedMsg;
 	inst->bEmitMsgOnClose = loadModConf->bEmitMsgOnClose;
+	inst->bEmitMsgOnOpen = loadModConf->bEmitMsgOnOpen;
 	inst->bPreserveCase = loadModConf->bPreserveCase;
 	inst->iTCPLstnMax = loadModConf->iTCPLstnMax;
 	inst->iTCPSessMax = loadModConf->iTCPSessMax;
@@ -397,6 +409,7 @@ createInstance(instanceConf_t **pinst)
 	*pinst = inst;
 finalize_it:
 	if(iRet != RS_RET_OK) {
+		free(inst->cnf_params);
 		free(inst);
 	}
 	RETiRet;
@@ -428,7 +441,7 @@ static rsRetVal addInstance(void __attribute__((unused)) *pVal, uchar *pNewVal)
 		CHKmalloc(inst->cnf_params->pszAddr = ustrdup(cs.lstnIP));
 	}
 	if((cs.lstnPortFile == NULL) || (cs.lstnPortFile[0] == '\0')) {
-		inst->cnf_params->pszAddr = NULL;
+		inst->cnf_params->pszLstnPortFileName = NULL;
 	} else {
 		CHKmalloc(inst->cnf_params->pszLstnPortFileName = ustrdup(cs.lstnPortFile));
 	}
@@ -439,6 +452,20 @@ static rsRetVal addInstance(void __attribute__((unused)) *pVal, uchar *pNewVal)
 		CHKmalloc(inst->pszInputName = ustrdup(cs.pszInputName));
 	}
 	inst->cnf_params->bSuppOctetFram = cs.bSuppOctetFram;
+	inst->iStrmDrvrMode = cs.iStrmDrvrMode;
+	inst->bKeepAlive = cs.bKeepAlive ;
+	inst->bUseFlowControl = cs.bUseFlowControl;
+	inst->bDisableLFDelim = cs.bDisableLFDelim;
+	inst->bEmitMsgOnClose = cs.bEmitMsgOnClose;
+	inst->bPreserveCase = cs.bPreserveCase;
+	inst->iKeepAliveProbes = cs.iKeepAliveProbes;
+	inst->iKeepAliveIntvl = cs.iKeepAliveIntvl;
+	inst->iKeepAliveTime = cs.iKeepAliveTime;
+	inst->iKeepAliveTime = cs.iKeepAliveTime;
+	inst->iAddtlFrameDelim = cs.iAddtlFrameDelim;
+	inst->iTCPLstnMax = cs.iTCPLstnMax;
+	inst->iTCPSessMax = cs.iTCPSessMax;
+	inst->iStrmDrvrMode = cs.iStrmDrvrMode;
 
 finalize_it:
 	free(pNewVal);
@@ -451,6 +478,7 @@ addListner(modConfData_t *modConf, instanceConf_t *inst)
 {
 	DEFiRet;
 	uchar *psz;	/* work variable */
+	permittedPeers_t *peers;
 
 	tcpsrv_t *pOurTcpsrv;
 	CHKiRet(tcpsrv.Construct(&pOurTcpsrv));
@@ -477,6 +505,7 @@ addListner(modConfData_t *modConf, instanceConf_t *inst)
 	CHKiRet(tcpsrv.SetbDisableLFDelim(pOurTcpsrv, inst->bDisableLFDelim));
 	CHKiRet(tcpsrv.SetDiscardTruncatedMsg(pOurTcpsrv, inst->discardTruncatedMsg));
 	CHKiRet(tcpsrv.SetNotificationOnRemoteClose(pOurTcpsrv, inst->bEmitMsgOnClose));
+	CHKiRet(tcpsrv.SetNotificationOnRemoteOpen(pOurTcpsrv, inst->bEmitMsgOnOpen));
 	CHKiRet(tcpsrv.SetPreserveCase(pOurTcpsrv, inst->bPreserveCase));
 	/* now set optional params, but only if they were actually configured */
 	psz = (inst->pszStrmDrvrName == NULL) ? modConf->pszStrmDrvrName : inst->pszStrmDrvrName;
@@ -500,6 +529,10 @@ addListner(modConfData_t *modConf, instanceConf_t *inst)
 			? modConf->pszStrmDrvrCAFile : inst->pszStrmDrvrCAFile;
 	CHKiRet(tcpsrv.SetDrvrCAFile(pOurTcpsrv, psz));
 
+	psz = (inst->pszStrmDrvrCRLFile == NULL)
+			? modConf->pszStrmDrvrCRLFile : inst->pszStrmDrvrCRLFile;
+	CHKiRet(tcpsrv.SetDrvrCRLFile(pOurTcpsrv, psz));
+
 	psz = (inst->pszStrmDrvrKeyFile == NULL)
 			? modConf->pszStrmDrvrKeyFile : inst->pszStrmDrvrKeyFile;
 	CHKiRet(tcpsrv.SetDrvrKeyFile(pOurTcpsrv, psz));
@@ -508,8 +541,10 @@ addListner(modConfData_t *modConf, instanceConf_t *inst)
 			? modConf->pszStrmDrvrCertFile : inst->pszStrmDrvrCertFile;
 	CHKiRet(tcpsrv.SetDrvrCertFile(pOurTcpsrv, psz));
 
-	if(pPermPeersRoot != NULL) {
-		CHKiRet(tcpsrv.SetDrvrPermPeers(pOurTcpsrv, pPermPeersRoot));
+	peers = (inst->pPermPeersRoot == NULL)
+			? modConf->pPermPeersRoot : inst->pPermPeersRoot;
+	if(peers != NULL) {
+			CHKiRet(tcpsrv.SetDrvrPermPeers(pOurTcpsrv, peers));
 	}
 
 	/* initialized, now add socket and listener params */
@@ -600,6 +635,8 @@ CODESTARTnewInpInst
 			inst->pszStrmDrvrPermitExpiredCerts = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(inppblk.descr[i].name, "streamdriver.cafile")) {
 			inst->pszStrmDrvrCAFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
+		} else if(!strcmp(inppblk.descr[i].name, "streamdriver.crlfile")) {
+			inst->pszStrmDrvrCRLFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(inppblk.descr[i].name, "streamdriver.keyfile")) {
 			inst->pszStrmDrvrKeyFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(inppblk.descr[i].name, "streamdriver.certfile")) {
@@ -608,6 +645,12 @@ CODESTARTnewInpInst
 			inst->pszStrmDrvrName = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(inppblk.descr[i].name, "gnutlsprioritystring")) {
 			inst->gnutlsPriorityString = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
+		} else if(!strcmp(inppblk.descr[i].name, "permittedpeer")) {
+			for(int j = 0 ; j <  pvals[i].val.d.ar->nmemb ; ++j) {
+				uchar *const peer = (uchar*) es_str2cstr(pvals[i].val.d.ar->arr[j], NULL);
+				CHKiRet(net.AddPermittedPeer(&inst->pPermPeersRoot, peer));
+				free(peer);
+			}
 		} else if(!strcmp(inppblk.descr[i].name, "flowcontrol")) {
 			inst->bUseFlowControl = (int) pvals[i].val.d.n;
 		} else if(!strcmp(inppblk.descr[i].name, "disablelfdelimiter")) {
@@ -616,6 +659,8 @@ CODESTARTnewInpInst
 			inst->discardTruncatedMsg = (int) pvals[i].val.d.n;
 		} else if(!strcmp(inppblk.descr[i].name, "notifyonconnectionclose")) {
 			inst->bEmitMsgOnClose = (int) pvals[i].val.d.n;
+		} else if(!strcmp(inppblk.descr[i].name, "notifyonconnectionopen")) {
+			inst->bEmitMsgOnOpen = (int) pvals[i].val.d.n;
 		} else if(!strcmp(inppblk.descr[i].name, "addtlframedelimiter")) {
 			inst->iAddtlFrameDelim = (int) pvals[i].val.d.n;
 		} else if(!strcmp(inppblk.descr[i].name, "maxframesize")) {
@@ -678,6 +723,7 @@ CODESTARTbeginCnfLoad
 	loadModConf->iKeepAliveProbes = 0;
 	loadModConf->iKeepAliveTime = 0;
 	loadModConf->bEmitMsgOnClose = 0;
+	loadModConf->bEmitMsgOnOpen = 0;
 	loadModConf->iAddtlFrameDelim = TCPSRV_NO_ADDTL_DELIMITER;
 	loadModConf->maxFrameSize = 200000;
 	loadModConf->bDisableLFDelim = 0;
@@ -687,14 +733,14 @@ CODESTARTbeginCnfLoad
 	loadModConf->pszStrmDrvrAuthMode = NULL;
 	loadModConf->pszStrmDrvrPermitExpiredCerts = NULL;
 	loadModConf->pszStrmDrvrCAFile = NULL;
+	loadModConf->pszStrmDrvrCRLFile = NULL;
 	loadModConf->pszStrmDrvrKeyFile = NULL;
 	loadModConf->pszStrmDrvrCertFile = NULL;
-	loadModConf->permittedPeers = NULL;
+	loadModConf->pPermPeersRoot = NULL;
 	loadModConf->configSetViaV2Method = 0;
 	loadModConf->bPreserveCase = 1; /* default to true */
 	bLegacyCnfModGlobalsPermitted = 1;
 	/* init legacy config variables */
-	cs.pszStrmDrvrAuthMode = NULL;
 	resetConfigVariables(NULL, NULL); /* dummy parameters just to fulfill interface def */
 ENDbeginCnfLoad
 
@@ -728,6 +774,8 @@ CODESTARTsetModCnf
 			loadModConf->bSuppOctetFram = (int) pvals[i].val.d.n;
 		} else if(!strcmp(modpblk.descr[i].name, "notifyonconnectionclose")) {
 			loadModConf->bEmitMsgOnClose = (int) pvals[i].val.d.n;
+		} else if(!strcmp(modpblk.descr[i].name, "notifyonconnectionopen")) {
+			loadModConf->bEmitMsgOnOpen = (int) pvals[i].val.d.n;
 		} else if(!strcmp(modpblk.descr[i].name, "addtlframedelimiter")) {
 			loadModConf->iAddtlFrameDelim = (int) pvals[i].val.d.n;
 		} else if(!strcmp(modpblk.descr[i].name, "maxframesize")) {
@@ -773,6 +821,8 @@ CODESTARTsetModCnf
 			loadModConf->pszStrmDrvrPermitExpiredCerts = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(modpblk.descr[i].name, "streamdriver.cafile")) {
 			loadModConf->pszStrmDrvrCAFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
+		} else if(!strcmp(modpblk.descr[i].name, "streamdriver.crlfile")) {
+			loadModConf->pszStrmDrvrCRLFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(modpblk.descr[i].name, "streamdriver.keyfile")) {
 			loadModConf->pszStrmDrvrKeyFile = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(modpblk.descr[i].name, "streamdriver.certfile")) {
@@ -780,7 +830,11 @@ CODESTARTsetModCnf
 		} else if(!strcmp(modpblk.descr[i].name, "streamdriver.name")) {
 			loadModConf->pszStrmDrvrName = (uchar*)es_str2cstr(pvals[i].val.d.estr, NULL);
 		} else if(!strcmp(modpblk.descr[i].name, "permittedpeer")) {
-			loadModConf->permittedPeers = cnfarrayDup(pvals[i].val.d.ar);
+			for(int j = 0 ; j <  pvals[i].val.d.ar->nmemb ; ++j) {
+				uchar *const peer = (uchar*) es_str2cstr(pvals[i].val.d.ar->arr[j], NULL);
+				CHKiRet(net.AddPermittedPeer(&loadModConf->pPermPeersRoot, peer));
+				free(peer);
+			}
 		} else if(!strcmp(modpblk.descr[i].name, "preservecase")) {
 			loadModConf->bPreserveCase = (int) pvals[i].val.d.n;
 		} else {
@@ -818,6 +872,11 @@ CODESTARTendCnfLoad
 		pModConf->iKeepAliveProbes = cs.iKeepAliveProbes;
 		pModConf->iKeepAliveIntvl = cs.iKeepAliveIntvl;
 		pModConf->iKeepAliveTime = cs.iKeepAliveTime;
+		if(pPermPeersRoot != NULL) {
+			assert(pModConf->pPermPeersRoot == NULL);
+			pModConf->pPermPeersRoot = pPermPeersRoot;
+			pPermPeersRoot = NULL; /* memory handed over! */
+		}
 		if((cs.pszStrmDrvrAuthMode == NULL) || (cs.pszStrmDrvrAuthMode[0] == '\0')) {
 			loadModConf->pszStrmDrvrAuthMode = NULL;
 		} else {
@@ -860,15 +919,8 @@ ENDcheckCnf
 
 BEGINactivateCnfPrePrivDrop
 	instanceConf_t *inst;
-	int i;
 CODESTARTactivateCnfPrePrivDrop
 	runModConf = pModConf;
-	if(runModConf->permittedPeers != NULL) {
-		for(i = 0 ; i <  runModConf->permittedPeers->nmemb ; ++i) {
-			setPermittedPeer(NULL, (uchar*)
-			    es_str2cstr(runModConf->permittedPeers->arr[i], NULL));
-		}
-	}
 	for(inst = runModConf->root ; inst != NULL ; inst = inst->next) {
 		addListner(runModConf, inst);
 	}
@@ -892,28 +944,33 @@ ENDactivateCnf
 BEGINfreeCnf
 	instanceConf_t *inst, *del;
 CODESTARTfreeCnf
+	free(pModConf->gnutlsPriorityString);
 	free(pModConf->pszStrmDrvrName);
 	free(pModConf->pszStrmDrvrAuthMode);
-	free(pModConf->gnutlsPriorityString);
 	free(pModConf->pszStrmDrvrPermitExpiredCerts);
 	free(pModConf->pszStrmDrvrCAFile);
+	free(pModConf->pszStrmDrvrCRLFile);
 	free(pModConf->pszStrmDrvrKeyFile);
 	free(pModConf->pszStrmDrvrCertFile);
-	if(pModConf->permittedPeers != NULL) {
-		cnfarrayContentDestruct(pModConf->permittedPeers);
-		free(pModConf->permittedPeers);
+	if(pModConf->pPermPeersRoot != NULL) {
+		net.DestructPermittedPeers(&pModConf->pPermPeersRoot);
 	}
+
 	for(inst = pModConf->root ; inst != NULL ; ) {
 		free((void*)inst->pszBindRuleset);
 		free((void*)inst->pszStrmDrvrAuthMode);
 		free((void*)inst->pszStrmDrvrName);
 		free((void*)inst->pszStrmDrvrPermitExpiredCerts);
 		free((void*)inst->pszStrmDrvrCAFile);
+		free((void*)inst->pszStrmDrvrCRLFile);
 		free((void*)inst->pszStrmDrvrKeyFile);
 		free((void*)inst->pszStrmDrvrCertFile);
 		free((void*)inst->gnutlsPriorityString);
 		free((void*)inst->pszInputName);
 		free((void*)inst->dfltTZ);
+		if(inst->pPermPeersRoot != NULL) {
+			net.DestructPermittedPeers(&inst->pPermPeersRoot);
+		}
 		del = inst;
 		inst = inst->next;
 		free(del);
@@ -925,7 +982,6 @@ RunServerThread(void *myself)
 {
 	tcpsrv_etry_t *const etry = (tcpsrv_etry_t*) myself;
 	rsRetVal iRet;
-	dbgprintf("RGER: running ety %p\n", etry);
 	iRet = tcpsrv.Run(etry->tcpsrv);
 	if(iRet != RS_RET_OK) {
 		LogError(0, iRet, "imtcp: error while terminating server; rsyslog may hang on shutdown");
@@ -959,7 +1015,7 @@ startSrvWrkr(tcpsrv_etry_t *const etry)
 	pthread_attr_setstacksize(&sessThrdAttr, 4096*1024);
 	r = pthread_create(&etry->tid, &sessThrdAttr, RunServerThread, etry);
 	if(r != 0) {
-		LogError(errno, NO_ERRCODE, "imtcp error creating server thread");
+		LogError(r, NO_ERRCODE, "imtcp error creating server thread");
 		/* we do NOT abort, as other servers may run - after all, we logged an error */
 	}
 	pthread_attr_destroy(&sessThrdAttr);
@@ -990,6 +1046,7 @@ CODESTARTrunInput
 	iRet = tcpsrv.Run(tcpsrv_root->tcpsrv);
 
 	/* de-init remaining servers */
+	etry = tcpsrv_root->next;
 	while(etry != NULL) {
 		stopSrvWrkr(etry);
 		etry = etry->next;
@@ -1007,12 +1064,14 @@ ENDwillRun
 BEGINafterRun
 CODESTARTafterRun
 	tcpsrv_etry_t *etry = tcpsrv_root;
+	tcpsrv_etry_t *del;
 	while(etry != NULL) {
 		iRet = tcpsrv.Destruct(&etry->tcpsrv);
 		// TODO: check iRet, reprot error
+		del = etry;
 		etry = etry->next;
+		free(del);
 	}
-
 	net.clearAllowedSenders(UCHAR_CONSTANT("TCP"));
 ENDafterRun
 
@@ -1026,10 +1085,6 @@ ENDisCompatibleWithFeature
 
 BEGINmodExit
 CODESTARTmodExit
-	if(pPermPeersRoot != NULL) {
-		net.DestructPermittedPeers(&pPermPeersRoot);
-	}
-
 	/* release objects we used */
 	objRelease(net, LM_NET_FILENAME);
 	objRelease(netstrm, LM_NETSTRMS_FILENAME);
@@ -1055,11 +1110,11 @@ resetConfigVariables(uchar __attribute__((unused)) *pp, void __attribute__((unus
 	cs.iAddtlFrameDelim = TCPSRV_NO_ADDTL_DELIMITER;
 	cs.maxFrameSize = 200000;
 	cs.bDisableLFDelim = 0;
-	free(cs.pszInputName);
-	cs.pszInputName = NULL;
+	cs.bPreserveCase = 1;
 	free(cs.pszStrmDrvrAuthMode);
 	cs.pszStrmDrvrAuthMode = NULL;
-	cs.bPreserveCase = 1;
+	free(cs.pszInputName);
+	cs.pszInputName = NULL;
 	free(cs.lstnPortFile);
 	cs.lstnPortFile = NULL;
 	return RS_RET_OK;

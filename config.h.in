@@ -15,6 +15,12 @@
 /* Indicator that we need to build a dummy imkafka module */
 #undef ENABLE_IMKAFKA_DUMMY
 
+/* Indicator that libcap-ng is present */
+#undef ENABLE_LIBCAPNG
+
+/* Indicator that libcap-ng is present */
+#undef ENABLE_LIBCAPNG_PRESENT
+
 /* Indicator that LIBGCRYPT is present */
 #undef ENABLE_LIBGCRYPT
 
@@ -68,6 +74,9 @@
 
 /* Define to 1 if you have the `clock_gettime' function. */
 #undef HAVE_CLOCK_GETTIME
+
+/* Define to 1 if you have the `close_range' function. */
+#undef HAVE_CLOSE_RANGE
 
 /* Define to 1 if you have the <curl/curl.h> header file. */
 #undef HAVE_CURL_CURL_H
@@ -174,6 +183,9 @@
 /* libsystemd present */
 #undef HAVE_LIBSYSTEMD
 
+/* Define to 1 if you have the <linux/close_range.h> header file. */
+#undef HAVE_LINUX_CLOSE_RANGE_H
+
 /* Define if ln_loadSamplesFromString exists. */
 #undef HAVE_LOADSAMPLESFROMSTRING
 
@@ -227,6 +239,9 @@
 
 /* Define to 1 if you have the <pcap.h> header file. */
 #undef HAVE_PCAP_H
+
+/* PGsslInUse function available */
+#undef HAVE_PGSSLINUSE
 
 /* Define to 1 if you have the `port_create' function. */
 #undef HAVE_PORT_CREATE

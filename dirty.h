@@ -5,7 +5,7 @@
  * yet a runtime library, because it depends on some functionality
  * residing somewhere else.
  *
- * Copyright 2007-2014 Rainer Gerhards and Adiscon GmbH.
+ * Copyright 2007-2023 Rainer Gerhards and Adiscon GmbH.
  *
  * This file is part of rsyslog.
  *
@@ -38,10 +38,10 @@ rsRetVal __attribute__((deprecated)) parseAndSubmitMessage(const uchar *hname,
 	prop_t *pInputName, const struct syslogTime *stTime,
 	const time_t ttGenTime, ruleset_t *pRuleset);
 rsRetVal createMainQueue(qqueue_t **ppQueue, uchar *pszQueueName, struct nvlst *lst);
-rsRetVal startMainQueue(qqueue_t *pQueue);
+rsRetVal startMainQueue(rsconf_t *cnf, qqueue_t *pQueue);
+int get_bHadHUP(void);
 
 extern int MarkInterval;
-extern qqueue_t *pMsgQueue;			/* the main message queue */
 #define CONF_VERIFY_PARTIAL_CONF 0x02		/* bit: partial configuration to be checked */
 extern int iConfigVerify;			/* is this just a config verify run? */
 extern int bHaveMainQueue;

@@ -35,6 +35,7 @@ override_dh_auto_configure:
 		--enable-gnutls \
 		--enable-openssl \
 		--enable-relp \
+		--enable-snmp \
 		--enable-pmaixforwardedfrom \
 		--enable-pmciscoios \
 		--enable-pmcisconames \
@@ -52,14 +53,16 @@ override_dh_auto_configure:
 		--enable-mmsequence \
 		--enable-mmfields \
 		--enable-mmrm1stspace \
+		--enable-mmkubernetes \
 		--enable-imczmq \
 		--enable-omczmq \
 		--enable-omhiredis \
 		--enable-fmhash \
-		--disable-libgcrypt \
 		--enable-testbench \
 		--enable-extended-tests \
 		--enable-imdiag \
+		--enable-libzstd \
+		--disable-libgcrypt \
 		--disable-generate-man-pages \
 		--disable-fmhttp \
 		--disable-liblogging-stdlog \
@@ -79,5 +82,5 @@ override_dh_install:
 
 override_dh_auto_test:
 ifeq (, $(filter nocheck, $(DEB_BUILD_OPTIONS)))
-	dh_auto_test --no-parallel || ( cat tests/test-suite.log; exit 1 ) && ( cat tests/test-suite.log )
+	PATH=$$PATH:/usr/sbin dh_auto_test || ( cat tests/test-suite.log; exit 1 ) && ( cat tests/test-suite.log )
 endif

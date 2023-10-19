@@ -2,8 +2,6 @@ Rsyslog - what is it?
 =====================
 
 [![Help Contribute to Open Source](https://www.codetriage.com/rsyslog/rsyslog/badges/users.svg)](https://www.codetriage.com/rsyslog/rsyslog)
-[![Language Grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/rsyslog/rsyslog.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/rsyslog/rsyslog/context:cpp)
-[![Total Alerts](https://img.shields.io/lgtm/alerts/g/rsyslog/rsyslog.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/rsyslog/rsyslog/alerts/)
 
 Rsyslog is a **r**ocket-fast **sys**tem for **log** processing.
 
@@ -52,7 +50,7 @@ In general, you need
 
 It is best to build these from source.
 
-#### CentOS 6
+#### CentOS 6 / RHEL
 
 For json-c, we need:
 ```
@@ -80,7 +78,7 @@ Libraries in question are at least: libestr, liblognorm, libfastjson.
 
 Needed packages to build with omhiredis support:
 ```
-apt-get update && apt-get install -y build-essential pkg-config libestr-dev libfastjson-dev zlib1g-dev uuid-dev libgcrypt20-dev liblogging-stdlog-dev libhiredis-dev uuid-dev libgcrypt11-dev liblogging-stdlog-dev flex bison
+apt-get update && apt-get install -y build-essential pkg-config libestr-dev libfastjson-dev zlib1g-dev uuid-dev libgcrypt20-dev libhiredis-dev uuid-dev libgcrypt11-dev liblogging-stdlog-dev flex bison
 ```
 
 Aditional packages for other modules:
@@ -96,7 +94,7 @@ sudo apt-get install libksi0 libksi-devel
 #### Debian
 
 ```
-sudo apt install build-essential pkg-config libestr-dev libfastjson-dev zlib1g-dev uuid-dev libgcrypt20-dev libcurl4-gnutls-dev zlib1g-dev liblogging-stdlog-dev liblogging-stdlog-dev flex bison
+sudo apt install build-essential pkg-config libestr-dev libfastjson-dev zlib1g-dev uuid-dev libgcrypt20-dev libcurl4-gnutls-dev zlib1g-dev liblogging-stdlog-dev flex bison
 ```
 
 *Note:* For certain libraries version requirements might be higher,

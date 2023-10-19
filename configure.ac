@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([rsyslog],[8.2110.0],[rsyslog@lists.adiscon.com])   # UPDATE on release
-AC_DEFINE(VERSION_YEAR,  21, [year part of real rsyslog version])  # UPDATE on release
+AC_INIT([rsyslog],[8.2310.0],[rsyslog@lists.adiscon.com])   # UPDATE on release
+AC_DEFINE(VERSION_YEAR,  23, [year part of real rsyslog version])  # UPDATE on release
 AC_DEFINE(VERSION_MONTH, 10, [month part of real rsyslog version]) # UPDATE on release
 
 AM_INIT_AUTOMAKE([subdir-objects])
@@ -200,7 +200,7 @@ AC_CHECK_HEADERS([malloc.h],[],[],[
      #endif
   ]
 ])
-AC_CHECK_HEADERS([fcntl.h locale.h netdb.h netinet/in.h paths.h stddef.h stdlib.h string.h sys/file.h sys/ioctl.h sys/param.h sys/socket.h sys/time.h sys/stat.h unistd.h utmp.h utmpx.h sys/epoll.h sys/prctl.h sys/select.h getopt.h])
+AC_CHECK_HEADERS([fcntl.h locale.h netdb.h netinet/in.h paths.h stddef.h stdlib.h string.h sys/file.h sys/ioctl.h sys/param.h sys/socket.h sys/time.h sys/stat.h unistd.h utmp.h utmpx.h sys/epoll.h sys/prctl.h sys/select.h getopt.h linux/close_range.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -233,7 +233,7 @@ AC_TYPE_SIGNAL
 AC_FUNC_STAT
 AC_FUNC_STRERROR_R
 AC_FUNC_VPRINTF
-AC_CHECK_FUNCS([flock recvmmsg basename alarm clock_gettime gethostbyname gethostname gettimeofday localtime_r memset mkdir regcomp select setsid socket strcasecmp strchr strdup strerror strndup strnlen strrchr strstr strtol strtoul uname ttyname_r getline malloc_trim prctl epoll_create epoll_create1 fdatasync syscall lseek64 asprintf])
+AC_CHECK_FUNCS([flock recvmmsg basename alarm clock_gettime gethostbyname gethostname gettimeofday localtime_r memset mkdir regcomp select setsid socket strcasecmp strchr strdup strerror strndup strnlen strrchr strstr strtol strtoul uname ttyname_r getline malloc_trim prctl epoll_create epoll_create1 fdatasync syscall lseek64 asprintf close_range])
 AC_CHECK_FUNC([setns], [AC_DEFINE([HAVE_SETNS], [1], [Define if setns exists.])])
 AC_CHECK_TYPES([off64_t])
 
@@ -377,6 +377,34 @@ AC_ARG_ENABLE(fmhash,
 	[enable_fmhash=yes]
 )
 
+AC_ARG_ENABLE(libcap-ng,
+        [AS_HELP_STRING([--enable-libcap-ng],[Enable dropping capabilities to only the necessary set @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_libcapng="yes" ;;
+          no) enable_libcapng="no" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable_libcapng) ;;
+         esac],
+        [enable_libcapng=no]
+)
+
+if test "$enable_libcapng" = "yes"; then
+        PKG_CHECK_MODULES(
+                [LIBCAPNG_PRESENT],
+                [libcap-ng],
+                [AC_DEFINE([ENABLE_LIBCAPNG_PRESENT], [1], [Indicator that libcap-ng is present])],
+                [AC_MSG_ERROR(libcap-ng is not present.)]
+        )
+        PKG_CHECK_MODULES(
+                [LIBCAPNG],
+                [libcap-ng >= 0.8.2],
+                [AC_DEFINE([ENABLE_LIBCAPNG], [1], [Indicator that libcap-ng is present])],
+                [AC_MSG_ERROR([libcap-ng is present, but outdated - need 0.8.2 or above.])]
+        )
+        CFLAGS="$CFLAGS $LIBCAPNG_CFLAGS"
+        LIBS="$LIBS $LIBCAPNG_LIBS"
+fi
+
+
 AC_ARG_ENABLE(fmhash-xxhash,
 	[AS_HELP_STRING([--enable-fmhash-xxhash],[Enable xxhash in fmhash support @<:@default=no@:>@])],
         [case "${enableval}" in
@@ -398,6 +426,28 @@ if test "$enable_fmhash_xxhash" = "yes"; then
 			HASH_XXHASH_LIBS="-lxxhash"
 			AC_SUBST(HASH_XXHASH_LIBS)],
 			[AC_MSG_ERROR([Unable to add XXHASH support for hash64.])])
+	])
+fi
+
+
+#faup header checks
+AC_ARG_ENABLE(ffaup,
+	[AS_HELP_STRING([--enable-ffaup],[Enable ffaup support @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_ffaup="yes" ;;
+          no) enable_ffaup="no" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-ffaup) ;;
+         esac],
+	[enable_ffaup=no]
+)
+
+AM_CONDITIONAL(ENABLE_FFAUP, test x$enable_ffaup = xyes)
+if test "$enable_ffaup" = "yes"; then
+	AC_CHECK_LIB([faupl], [faup_init], [
+		AC_CHECK_HEADER([faup/faup.h], [
+			FAUP_LIBS="-lfaupl"
+			AC_SUBST(FAUP_LIBS)],
+			[AC_MSG_ERROR([Unable to add faup support for URL parsing.])])
 	])
 fi
 
@@ -627,7 +677,7 @@ fi
 
 # inet
 AC_ARG_ENABLE(inet,
-        [AS_HELP_STRING([--enable-inet],[Enable networking support @<:@default=yes@:>@])],
+        [AS_HELP_STRING([--enable-inet],[Enable automatic load of omfwd and limit build of networking libraries @<:@default=yes@:>@])],
         [case "${enableval}" in
          yes) enable_inet="yes" ;;
           no) enable_inet="no" ;;
@@ -869,6 +919,11 @@ if test "x$enable_pgsql" = "xyes"; then
 	    [-L`$PG_CONFIG --libdir`]
 	  )
 	])
+	AC_CHECK_LIB(
+	  [pq],
+	  [PGsslInUse],
+	  [AC_DEFINE([HAVE_PGSSLINUSE], [1], [PGsslInUse function available])]
+	)
 fi
 AM_CONDITIONAL(ENABLE_PGSQL, test x$enable_pgsql = xyes)
 AC_SUBST(PGSQL_CFLAGS)
@@ -1154,6 +1209,42 @@ fi
 AM_CONDITIONAL(ENABLE_LIBGCRYPT, test x$enable_libgcrypt = xyes)
 AC_SUBST(LIBGCRYPT_CFLAGS)
 AC_SUBST(LIBGCRYPT_LIBS)
+
+# libzstd support
+AC_ARG_ENABLE(libzstd,
+        [AS_HELP_STRING([--enable-libzstd],[Enable log file compression support via libzstd @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_libzstd="yes" ;;
+          no) enable_libzstd="no" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-libzstd) ;;
+         esac],
+        [enable_libzstd=no]
+)
+if test "x$enable_libzstd" = "xyes"; then
+    save_LIBS="$LIBS"
+    PKG_CHECK_MODULES([ZSTD], zstd >= 1.4.0, [],
+        [
+	LIBS="$LIBS -lzstd"
+	ZSTD_LIBS="-lzstd"
+	AC_SUBST(ZSTD_LIBS)
+	AC_SEARCH_LIBS(ZSTD_compressStream2, zstd,
+            [AC_COMPILE_IFELSE(
+                [AC_LANG_PROGRAM(
+                    [[ #include <zstd.h> ]],
+                    [[
+		       ZSTD_CCtx* cctx = ZSTD_createCCtx();
+		       ZSTD_CCtx_setParameter(cctx, ZSTD_c_nbWorkers, 5);
+                    ]]
+                )],
+                [],
+                [AC_MSG_ERROR([libzstd version must be >= 1.4.0])]
+            )],
+            [AC_MSG_ERROR([libzstd not found])]
+        )]
+    )
+    LIBS="$save_LIBS"
+fi
+AM_CONDITIONAL(ENABLE_LIBZSTD, test x$enable_libzstd = xyes)
 
 
 # support for building the rsyslogd runtime
@@ -2222,6 +2313,17 @@ AC_ARG_ENABLE(imkafka,
         [enable_imkafka=no]
 )
 
+AC_ARG_ENABLE(omazureeventhubs_tests,
+        [AS_HELP_STRING([--enable-omazureeventhubs-tests],[Enable Omazureeventhubs tests @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_omazureeventhubs_tests="yes" ;;
+          no) enable_omazureeventhubs_tests="no" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-omazureeventhubs-tests) ;;
+         esac],
+        [enable_omazureeventhubs_tests=no]
+)
+AM_CONDITIONAL(ENABLE_OMAZUREEVENTHUBS_TESTS, test x$enable_omazureeventhubs_tests = xyes)
+
 AC_ARG_ENABLE(kafka_tests,
         [AS_HELP_STRING([--enable-kafka-tests],[Enable Kafka tests, needs Java @<:@default=no@:>@])],
         [case "${enableval}" in
@@ -2336,8 +2438,58 @@ fi
 AM_CONDITIONAL(ENABLE_OMKAFKA, test x$enable_omkafka = xyes -o x$enable_omkafka = xoptional)
 AM_CONDITIONAL(ENABLE_IMKAFKA, test x$enable_imkafka = xyes -o x$enable_imkafka = xoptional)
 
-#MONGODB SUPPORT
 
+# omazureeventhubs support for output module
+AC_ARG_ENABLE(omazureeventhubs,
+        [AS_HELP_STRING([--enable-omazureeventhubs],[Compiles AzureEventHubs output module @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_omazureeventhubs="yes" ;;
+          no) enable_omazureeventhubs="no" ;;
+         optional) enable_omazureeventhubs="optional" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-omazureeventhubs) ;;
+         esac],
+        [enable_omazureeventhubs=no]
+)
+
+# PROTON PROTOCOL SUPPORT for omazureeventhubs
+# uses qpid-proton library
+if test "x$enable_omazureeventhubs" = "xyes"; then
+        PKG_CHECK_MODULES(PROTON, libqpid-proton >= 0.13)
+        AC_SUBST(PROTON_CFLAGS)
+        AC_SUBST(PROTON_LIBS)
+fi
+if test "x$enable_omazureeventhubs" = "xyes"; then
+        PKG_CHECK_MODULES(PROTON_PROACTOR, libqpid-proton-proactor >= 0.13)
+        AC_SUBST(PROTON_PROACTOR_CFLAGS)
+        AC_SUBST(PROTON_PROACTOR_LIBS)
+fi
+AM_CONDITIONAL(ENABLE_OMAZUREEVENTHUBS, test x$enable_omazureeventhubs = xyes)
+# END PROTON
+
+if test "x$enable_omazureeventhubs" = "xyes"; then
+	if test "x$enable_omazure_tests" = "xyes"; then
+		AC_MSG_NOTICE([omazureveenthubs: TEST Suite enabled, requires Azure Environment variables!])
+	fi
+else
+	if test "x$enable_omazure_tests" = "xyes"; then
+		AC_MSG_WARN([Omazureeventhubs Tests can not be enabled omazureveenthubs support. Disabling enable_omazure_tests...])
+		enable_omazure_tests="no"
+	fi
+fi
+
+# Static QPID-Proton support?
+AC_ARG_ENABLE(qpidproton_static,
+        [AS_HELP_STRING([--enable-qpidproton_static],[Enable static library linking for qpid-proton (required by omazureeventhubs module). Removes dependency for libqpid-proton*.so. @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_qpidproton_static="yes" ;;
+          no) enable_qpidproton_static="no" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-qpidproton_static) ;;
+         esac],
+        [enable_qpidproton_static=no]
+)
+AM_CONDITIONAL(ENABLE_QPIDPROTON_STATIC, test x$enable_qpidproton_static = xyes)
+
+#MONGODB SUPPORT
 AC_ARG_ENABLE(ommongodb,
         [AS_HELP_STRING([--enable-ommongodb],[Compiles ommongodb module @<:@default=no@:>@])],
         [case "${enableval}" in
@@ -2434,6 +2586,17 @@ AC_ARG_ENABLE(omhiredis,
         [enable_omhiredis=no]
 )
 
+AC_ARG_ENABLE(redis_tests,
+        [AS_HELP_STRING([--enable-redis-tests],[Enable redis tests, needs redis-server @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_redis_tests="yes" ;;
+          no) enable_redis_tests="no" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-redis-tests) ;;
+         esac],
+        [enable_redis_tests=no]
+)
+AM_CONDITIONAL(ENABLE_REDIS_TESTS, test x$enable_redis_tests = xyes)
+
 if test "x$enable_omhiredis" = "xyes" -o "x$enable_imhiredis" = "xyes" ; then
     PKG_CHECK_MODULES(HIREDIS, hiredis >= 0.10.1, [],
         [AC_SEARCH_LIBS(redisConnectWithTimeout, hiredis,
@@ -2468,6 +2631,21 @@ if test "x$enable_imhiredis" = "xyes" ; then
         ],
         # libevent not found
         [AC_MSG_ERROR([no libevent >= 2.0 found with pthreads support, imhiredis cannot use pub/sub])])
+fi
+
+if test "x$enable_imhiredis" = "xyes" || test "x$enable_omhiredis" = "xyes"; then
+	if test "x$enable_redis_tests" = "xyes"; then
+		AC_CHECK_PROG(REDIS, [redis-server], [yes], [no])
+		if test "x${REDIS}" = "xno"; then
+			AC_MSG_FAILURE([redis-server, which is a redis-tests dependency, not found])
+		fi
+	fi
+else
+	if test "x$enable_redis_tests" = "xyes"; then
+		AC_MSG_WARN([redis-tests can not be enabled without imhiredis or omhiredis support.
+                        Disabling enable_redis_tests...])
+		enable_redis_tests="no"
+	fi
 fi
 
 AM_CONDITIONAL(ENABLE_OMHIREDIS, test x$enable_omhiredis = xyes)
@@ -2701,10 +2879,12 @@ AC_CONFIG_FILES([Makefile \
 		plugins/mmsnmptrapd/Makefile \
 		plugins/pmlastmsg/Makefile \
 		plugins/mmdblookup/Makefile \
-    		contrib/mmdarwin/Makefile \
+		plugins/omazureeventhubs/Makefile \
+		contrib/mmdarwin/Makefile \
 		contrib/omhttp/Makefile \
 		contrib/fmhash/Makefile \
 		contrib/fmunflatten/Makefile \
+		contrib/ffaup/Makefile \
 		contrib/pmsnare/Makefile \
 		contrib/pmpanngfw/Makefile \
 		contrib/pmaixforwardedfrom/Makefile \
@@ -2749,12 +2929,16 @@ echo "    Unlimited select() support enabled:       $enable_unlimited_select"
 echo "    uuid support enabled:                     $enable_uuid"
 echo "    Log file signing support via KSI LS12:    $enable_ksi_ls12"
 echo "    Log file encryption support:              $enable_libgcrypt"
+echo "    Log file compression via zstd support:    $enable_libzstd"
 echo "    anonymization support enabled:            $enable_mmanon"
 echo "    message counting support enabled:         $enable_mmcount"
 echo "    liblogging-stdlog support enabled:        $enable_liblogging_stdlog"
 echo "    libsystemd enabled:                       $enable_libsystemd"
 echo "    kafka static linking enabled:             $enable_kafka_static"
+echo "    qpid proton static linking enabled:       $enable_qpidproton_static"
 echo "    atomic operations enabled:                $enable_atomic_operations"
+echo "    libcap-ng support enabled:                $enable_libcapng"
+
 echo
 echo "---{ input plugins }---"
 if test "$unamestr" != "AIX"; then
@@ -2802,6 +2986,8 @@ echo "    omhttpfs module will be compiled:         $enable_omhttpfs"
 echo "    omamqp1 module will be compiled:          $enable_omamqp1"
 echo "    omtcl module will be compiled:            $enable_omtcl"
 echo "    omkafka module will be compiled:          $enable_omkafka"
+echo "    omhiredis module will be compiled:        $enable_omhiredis"
+echo "    omazureeventhubs module will be compiled: $enable_omazureeventhubs"
 echo
 echo "---{ parser modules }---"
 echo "    pmlastmsg module will be compiled:        $enable_pmlastmsg"
@@ -2853,6 +3039,7 @@ echo "    fmhttp enabled:                           $enable_fmhttp"
 echo "    fmhash enabled:                           $enable_fmhash"
 echo "    fmhash with xxhash enabled:               $enable_fmhash_xxhash"
 echo "    fmunflatten enabled:                      $enable_fmunflatten"
+echo "    ffaup enabled:                            $enable_ffaup"
 echo
 echo "---{ debugging support }---"
 echo "    distcheck workaround enabled:             $enable_distcheck_workaround"
@@ -2867,6 +3054,8 @@ echo "    Elasticsearch Tests:                      $enable_elasticsearch_tests"
 echo "    ClickHouse Tests:                         $enable_clickhouse_tests"
 echo "    PostgreSQL Tests enabled:                 $enable_pgsql_tests"
 echo "    Kafka Tests enabled:                      $enable_kafka_tests"
+echo "    Redis Tests enabled:                      $enable_redis_tests"
+echo "    Omazureeventhubs Tests enabled:           $enable_omazureeventhubs_tests"
 echo "    Imdocker Tests enabled:                   $enable_imdocker_tests"
 echo "    gnutls tests enabled:                     $enable_gnutls_tests"
 echo "    imfile tests enabled:                     $enable_imfile_tests"

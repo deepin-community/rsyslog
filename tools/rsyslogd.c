@@ -3,7 +3,7 @@
  * because it was either written from scratch by me (rgerhards) or
  * contributors who agreed to ASL 2.0.
  *
- * Copyright 2004-2019 Rainer Gerhards and Adiscon
+ * Copyright 2004-2023 Rainer Gerhards and Adiscon
  *
  * This file is part of rsyslog.
  *
@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
 #ifdef ENABLE_LIBLOGGING_STDLOG
@@ -36,6 +37,12 @@
 #endif
 #ifdef HAVE_LIBSYSTEMD
 #	include <systemd/sd-daemon.h>
+#endif
+#ifdef ENABLE_LIBCAPNG
+	#include <cap-ng.h>
+#endif
+#if defined(HAVE_LINUX_CLOSE_RANGE_H)
+#	include <linux/close_range.h>
 #endif
 
 #include "rsyslog.h"
@@ -178,14 +185,16 @@ void rsyslogdDoDie(int sig);
 #endif
 
 /* global data items */
-static int bChildDied;
+static pthread_mutex_t mutChildDied;
+static int bChildDied = 0;
+static pthread_mutex_t mutHadHUP;
 static int bHadHUP;
 static int doFork = 1; 	/* fork - run in daemon mode - read-only after startup */
 int bFinished = 0;	/* used by termination signal handler, read-only except there
 			 * is either 0 or the number of the signal that requested the
 			 * termination.
 			 */
-const char *PidFile;
+const char *PidFile = NULL;
 #define NO_PIDFILE "NONE"
 int iConfigVerify = 0;	/* is this just a config verify run? */
 rsconf_t *ourConf = NULL;	/* our config object */
@@ -196,7 +205,6 @@ int bHaveMainQueue = 0;/* set to 1 if the main queue - in queueing mode - is ava
 			* If the main queue is either not yet ready or not running in
 			* queueing mode (mode DIRECT!), then this is set to 0.
 			*/
-qqueue_t *pMsgQueue = NULL;	/* default main message queue */
 prop_t *pInternalInputName = NULL;	/* there is only one global inputName for all internally-generated messages */
 ratelimit_t *internalMsg_ratelimiter = NULL; /* ratelimiter for rsyslog-own messages */
 int send_to_all = 0;   /* send message to all IPv4/IPv6 addresses */
@@ -228,8 +236,24 @@ setsid(void)
 }
 #endif
 
+/* helper for imdiag. Returns if HUP processing has been requested or
+ * is not yet finished. We know this is racy, but imdiag handles this
+ * part by repeating operations. The mutex look is primarily to force
+ * a memory barrier, so that we have a change to see changes already
+ * written, but not present in the core's cache.
+ * 2023-07-26 Rainer Gerhards
+ */
+int
+get_bHadHUP(void)
+{
+	pthread_mutex_lock(&mutHadHUP);
+	const int ret = bHadHUP;
+	pthread_mutex_unlock(&mutHadHUP);
+	/* note: at this point ret can already be invalid */
+	return ret;
+}
 
-static rsRetVal
+rsRetVal
 queryLocalHostname(void)
 {
 	uchar *LocalHostName = NULL;
@@ -296,6 +320,16 @@ finalize_it:
 	RETiRet;
 }
 
+static void
+clearPidFile(void)
+{
+	if(PidFile != NULL) {
+		if(strcmp(PidFile, NO_PIDFILE)) {
+			unlink(PidFile);
+		}
+	}
+}
+
 /* duplicate startup protection: check, based on pid file, if our instance
  * is already running. This MUST be called before we write our own pid file.
  */
@@ -320,7 +354,7 @@ checkStartupOK(void)
 		fprintf(stderr, "rsyslogd: error reading pid file, cannot start up\n");
 		ABORT_FINALIZE(RS_RET_ERR);
 	}
-	
+
 	/* ok, we got a pid, let's check if the process is running */
 	const pid_t pid = (pid_t) pf_pid;
 	if(kill(pid, 0) == 0 || errno != ESRCH) {
@@ -336,6 +370,36 @@ finalize_it:
 	if(fp != NULL)
 		fclose(fp);
 	RETiRet;
+}
+
+
+
+/* note: this function is specific to OS'es which provide
+ * the ability to read open file descriptors via /proc.
+ * returns 0 - success, something else otherwise
+ */
+static int
+close_unneeded_open_files(const char *const procdir,
+	const int beginClose, const int parentPipeFD)
+{
+	DIR *dir;
+	struct dirent *entry;
+
+	dir = opendir(procdir);
+	if (dir == NULL) {
+		dbgprintf("closes unneeded files: opendir failed for %s\n", procdir);
+		return 1;
+	}
+
+	while ((entry = readdir(dir)) != NULL) {
+		const int fd = atoi(entry->d_name);
+		if(fd >= beginClose && (((fd != dbgGetDbglogFd()) && (fd != parentPipeFD)))) {
+			close(fd);
+		}
+	}
+
+	closedir(dir);
+	return 0;
 }
 
 /* prepares the background processes (if auto-backbrounding) for
@@ -383,12 +447,32 @@ prepareBackground(const int parentPipeFD)
 	}
 #endif
 
-	/* close unnecessary open files */
-	const int endClose = getdtablesize();
-	close(0);
-	for(int i = beginClose ; i <= endClose ; ++i) {
-		if((i != dbgGetDbglogFd()) && (i != parentPipeFD)) {
-			  aix_close_it(i); /* AIXPORT */
+	/* close unnecessary open files - first try to use /proc file system,
+	 * if that is not possible iterate through all potentially open file
+	 * descriptors. This can be lenghty, but in practice /proc should work
+	 * for almost all current systems, and the fallback is primarily for
+	 * Solaris and AIX, where we do expect a decent max numbers of fds.
+	 */
+	close(0); /* always close stdin, we do not need it */
+
+	/* try Linux, Cygwin, NetBSD */
+	if(close_unneeded_open_files("/proc/self/fd", beginClose, parentPipeFD) != 0) {
+		/* try MacOS, FreeBSD */
+		if(close_unneeded_open_files("/proc/fd", beginClose, parentPipeFD) != 0) {
+			/* did not work out, so let's close everything... */
+			const int endClose = getdtablesize();
+#		if defined(HAVE_CLOSE_RANGE)
+			if(close_range(beginClose, endClose, 0) != 0) {
+				dbgprintf("errno %d after close_range(), fallback to loop\n", errno);
+#		endif
+				for(int i = beginClose ; i <= endClose ; ++i) {
+					if((i != dbgGetDbglogFd()) && (i != parentPipeFD)) {
+						  aix_close_it(i); /* AIXPORT */
+					}
+				}
+#		if defined(HAVE_CLOSE_RANGE)
+			}
+#		endif
 		}
 	}
 	seedRandomNumberForChild();
@@ -559,7 +643,8 @@ rsyslogd_InitStdRatelimiters(void)
 	CHKiRet(ratelimitNew(&dflt_ratelimiter, "rsyslogd", "dflt"));
 	CHKiRet(ratelimitNew(&internalMsg_ratelimiter, "rsyslogd", "internal_messages"));
 	ratelimitSetThreadSafe(internalMsg_ratelimiter);
-	ratelimitSetLinuxLike(internalMsg_ratelimiter, glblIntMsgRateLimitItv, glblIntMsgRateLimitBurst);
+	ratelimitSetLinuxLike(internalMsg_ratelimiter,
+		loadConf->globals.intMsgRateLimitItv, loadConf->globals.intMsgRateLimitBurst);
 	/* TODO: make internalMsg ratelimit settings configurable */
 finalize_it:
 	RETiRet;
@@ -622,7 +707,7 @@ finalize_it:
 		 * messages to stderr. -- rgerhards, 2008-04-02
 		 */
 		fprintf(stderr, "Error during class init for object '%s' - failing...\n", pErrObj);
-		fprintf(stderr, "rsyslogd initializiation failed - global classes could not be initialized.\n"
+		fprintf(stderr, "rsyslogd initialization failed - global classes could not be initialized.\n"
 				"Did you do a \"make install\"?\n"
 				"Suggested action: run rsyslogd with -d -n options to see what exactly "
 				"fails.\n");
@@ -804,18 +889,27 @@ rsRetVal createMainQueue(qqueue_t **ppQueue, uchar *pszQueueName, struct nvlst *
 		qqueueSetDefaultsRulesetQueue(*ppQueue);
 		qqueueApplyCnfParam(*ppQueue, lst);
 	}
+	qqueueCorrectParams(*ppQueue);
+
 	RETiRet;
 }
 
 rsRetVal
-startMainQueue(qqueue_t *const pQueue)
+startMainQueue(rsconf_t *cnf, qqueue_t *const pQueue)
 {
 	DEFiRet;
-	CHKiRet_Hdlr(qqueueStart(pQueue)) {
+	CHKiRet_Hdlr(qqueueStart(cnf, pQueue)) {
 		/* no queue is fatal, we need to give up in that case... */
 		LogError(0, iRet, "could not start (ruleset) main message queue");
+		if(runConf->globals.bAbortOnFailedQueueStartup) {
+			fprintf(stderr, "rsyslogd: could not start (ruleset) main message queue, "
+				"abortOnFailedQueueStartup is set, so we abort rsyslog now.\n");
+			fflush(stderr);
+			clearPidFile();
+			exit(1); /* "good" exit, this is intended here */
+		}
 		pQueue->qType = QUEUETYPE_DIRECT;
-		CHKiRet_Hdlr(qqueueStart(pQueue)) {
+		CHKiRet_Hdlr(qqueueStart(cnf, pQueue)) {
 			/* no queue is fatal, we need to give up in that case... */
 			LogError(0, iRet, "fatal error: could not even start queue in direct mode");
 		}
@@ -851,8 +945,8 @@ static void
 logmsgInternal_doWrite(smsg_t *pMsg)
 {
 	const int pri = getPRIi(pMsg);
-	if(pri % 8 <= glblIntMsgsSeverityFilter) {
-		if(bProcessInternalMessages) {
+	if(pri % 8 <= runConf->globals.intMsgsSeverityFilter) {
+		if(runConf->globals.bProcessInternalMessages) {
 			submitMsg2(pMsg);
 			pMsg = NULL; /* msg obj handed over; do not destruct */
 		} else {
@@ -865,13 +959,13 @@ logmsgInternal_doWrite(smsg_t *pMsg)
 			 */
 			static warnmsg_emitted = 0;
 			if(warnmsg_emitted == 0) {
-				stdlog_log(stdlog_hdl, LOG_WARNING, "%s",
+				stdlog_log(runConf->globals.stdlog_hdl, LOG_WARNING, "%s",
 					"RSYSLOG WARNING: liblogging-stdlog "
 					"functionality will go away soon. For details see "
 					"https://github.com/rsyslog/rsyslog/issues/2706");
 				warnmsg_emitted = 1;
 			}
-			stdlog_log(stdlog_hdl, pri2sev(pri), "%s", (char*)msg);
+			stdlog_log(runConf->globals.stdlog_hdl, pri2sev(pri), "%s", (char*)msg);
 			#else
 			syslog(pri, "%s", msg);
 			#endif
@@ -1004,7 +1098,7 @@ splitOversizeMessage(smsg_t *const pMsg)
 	const char *rawmsg;
 	int nsegments;
 	int len_rawmsg;
-	const int maxlen = glblGetMaxLine();
+	const int maxlen = glblGetMaxLine(runConf);
 	ISOBJ_TYPE_assert(pMsg, msg);
 
 	getRawMsg(pMsg, (uchar**) &rawmsg, &len_rawmsg);
@@ -1048,36 +1142,36 @@ submitMsg2(smsg_t *pMsg)
 
 	ISOBJ_TYPE_assert(pMsg, msg);
 
-	if(getRawMsgLen(pMsg) > glblGetMaxLine()){
+	if(getRawMsgLen(pMsg) > glblGetMaxLine(runConf)){
 		uchar *rawmsg;
 		int dummy;
 		getRawMsg(pMsg, &rawmsg, &dummy);
-		if(glblReportOversizeMessage()) {
+		if(glblReportOversizeMessage(runConf)) {
 			LogMsg(0, RS_RET_OVERSIZE_MSG, LOG_WARNING,
 				"message too long (%d) with configured size %d, begin of "
 				"message is: %.80s",
-				getRawMsgLen(pMsg), glblGetMaxLine(), rawmsg);
+				getRawMsgLen(pMsg), glblGetMaxLine(runConf), rawmsg);
 		}
 		writeOversizeMessageLog(pMsg);
-		if(glblGetOversizeMsgInputMode() == glblOversizeMsgInputMode_Split) {
+		if(glblGetOversizeMsgInputMode(runConf) == glblOversizeMsgInputMode_Split) {
 			splitOversizeMessage(pMsg);
 			/* we have submitted the message segments recursively, so we
 			 * can just deleted the original msg object and terminate.
 			 */
 			msgDestruct(&pMsg);
 			FINALIZE;
-		} else if(glblGetOversizeMsgInputMode() == glblOversizeMsgInputMode_Truncate) {
+		} else if(glblGetOversizeMsgInputMode(runConf) == glblOversizeMsgInputMode_Truncate) {
 			MsgTruncateToMaxSize(pMsg);
 		} else {
 			/* in "accept" mode, we do nothing, simply because "accept" means
 			 * to use as-is.
 			 */
-			assert(glblGetOversizeMsgInputMode() == glblOversizeMsgInputMode_Accept);
+			assert(glblGetOversizeMsgInputMode(runConf) == glblOversizeMsgInputMode_Accept);
 		}
 	}
 
 	pRuleset = MsgGetRuleset(pMsg);
-	pQueue = (pRuleset == NULL) ? pMsgQueue : ruleset.GetRulesetQueue(pRuleset);
+	pQueue = (pRuleset == NULL) ? runConf->pMsgQueue : ruleset.GetRulesetQueue(pRuleset);
 
 	/* if a plugin logs a message during shutdown, the queue may no longer exist */
 	if(pQueue == NULL) {
@@ -1107,7 +1201,7 @@ multiSubmitMsg2(multi_submit_t *const pMultiSub)
 		FINALIZE;
 
 	pRuleset = MsgGetRuleset(pMultiSub->ppMsgs[0]);
-	pQueue = (pRuleset == NULL) ? pMsgQueue : ruleset.GetRulesetQueue(pRuleset);
+	pQueue = (pRuleset == NULL) ? runConf->pMsgQueue : ruleset.GetRulesetQueue(pRuleset);
 
 	/* if a plugin logs a message during shutdown, the queue may no longer exist */
 	if(pQueue == NULL) {
@@ -1230,7 +1324,9 @@ hdlr_enable(int sig, void (*hdlr)())
 static void
 hdlr_sighup(void)
 {
+	pthread_mutex_lock(&mutHadHUP);
 	bHadHUP = 1;
+	pthread_mutex_unlock(&mutHadHUP);
 	/* at least on FreeBSD we seem not to necessarily awake the main thread.
 	 * So let's do it explicitely.
 	 */
@@ -1241,7 +1337,9 @@ hdlr_sighup(void)
 static void
 hdlr_sigchld(void)
 {
+	pthread_mutex_lock(&mutChildDied);
 	bChildDied = 1;
+	pthread_mutex_unlock(&mutChildDied);
 }
 
 static void
@@ -1377,12 +1475,6 @@ initAll(int argc, char **argv)
 		exit(1); /* "good" exit, leaving at init for fatal error */
 	}
 
-	/* get our host and domain names - we need to do this early as we may emit
-	 * error log messages, which need the correct hostname. -- rgerhards, 2008-04-04
-	 * But we need to have imInternal up first!
-	 */
-	queryLocalHostname();
-
 	/* we now can emit error messages "the regular way" */
 
 	if(getenv("TZ") == NULL) {
@@ -1403,16 +1495,14 @@ initAll(int argc, char **argv)
 		DBGPRINTF("deque option %c, optarg '%s'\n", ch, (arg == NULL) ? "" : arg);
 		switch((char)ch) {
 		case '4':
-			fprintf (stderr, "rsyslogd: the -4 command line option will go away "
-				 "soon.\nPlease use the global(net.ipprotocol=\"ipv4-only\") "
+			fprintf (stderr, "rsyslogd: the -4 command line option has gone away.\n"
+				 "Please use the global(net.ipprotocol=\"ipv4-only\") "
 				 "configuration parameter instead.\n");
-	                glbl.SetDefPFFamily(PF_INET);
 			break;
 		case '6':
-			fprintf (stderr, "rsyslogd: the -6 command line option will go away "
-				 "soon.\nPlease use the global(net.ipprotocol=\"ipv6-only\") "
+			fprintf (stderr, "rsyslogd: the -6 command line option will has gone away.\n"
+				 "Please use the global(net.ipprotocol=\"ipv6-only\") "
 				 "configuration parameter instead.\n");
-			glbl.SetDefPFFamily(PF_INET6);
 			break;
 		case 'A':
 			fprintf (stderr, "rsyslogd: the -A command line option will go away "
@@ -1472,16 +1562,14 @@ initAll(int argc, char **argv)
 			}
 			break;
 		case 'q':               /* add hostname if DNS resolving has failed */
-			fprintf (stderr, "rsyslogd: the -q command line option will go away "
-				 "soon.\nPlease use the global(net.aclAddHostnameOnFail=\"on\") "
+			fprintf (stderr, "rsyslogd: the -q command line option has gone away.\n"
+				 "Please use the global(net.aclAddHostnameOnFail=\"on\") "
 				 "configuration parameter instead.\n");
-		        *(net.pACLAddHostnameOnFail) = 1;
 		        break;
 		case 'Q':               /* dont resolve hostnames in ACL to IPs */
-			fprintf (stderr, "rsyslogd: the -Q command line option will go away "
-				 "soon.\nPlease use the global(net.aclResolveHostname=\"off\") "
+			fprintf (stderr, "rsyslogd: the -Q command line option has gone away.\n"
+				 "Please use the global(net.aclResolveHostname=\"off\") "
 				 "configuration parameter instead.\n");
-		        *(net.pACLDontResolve) = 1;
 		        break;
 		case 'T':/* chroot() immediately at program startup, but only for testing, NOT security yet */
 			if(arg == NULL) {
@@ -1503,12 +1591,10 @@ initAll(int argc, char **argv)
 		case 'u':		/* misc user settings */
 			iHelperUOpt = (arg == NULL) ? 0 : atoi(arg);
 			if(iHelperUOpt & 0x01) {
-				fprintf (stderr, "rsyslogd: the -u command line option will go away "
-					 "soon.\n"
+				fprintf (stderr, "rsyslogd: the -u command line option has gone away.\n"
 					 "For the 0x01 bit, please use the "
 					 "global(parser.parseHostnameAndTag=\"off\") "
 					 "configuration parameter instead.\n");
-				glbl.SetParseHOSTNAMEandTAG(0);
 			}
 			if(iHelperUOpt & 0x02) {
 				fprintf (stderr, "rsyslogd: the -u command line option will go away "
@@ -1521,16 +1607,14 @@ initAll(int argc, char **argv)
 			bChDirRoot = 0;
 			break;
 		case 'w':		/* disable disallowed host warnigs */
-			fprintf (stderr, "rsyslogd: the -w command line option will go away "
-				 "soon.\nPlease use the global(net.permitWarning=\"off\") "
+			fprintf (stderr, "rsyslogd: the -w command line option has gone away.\n"
+				 "Please use the global(net.permitWarning=\"off\") "
 				 "configuration parameter instead.\n");
-			glbl.SetOption_DisallowWarning(0);
 			break;
 		case 'x':		/* disable dns for remote messages */
-			fprintf (stderr, "rsyslogd: the -x command line option will go away "
-				 "soon.\nPlease use the global(net.enableDNS=\"off\") "
+			fprintf (stderr, "rsyslogd: the -x command line option has gone away.\n"
+				 "Please use the global(net.enableDNS=\"off\") "
 				 "configuration parameter instead.\n");
-			glbl.SetDisableDNS(1);
 			break;
 		case 'h':
 		case '?':
@@ -1551,6 +1635,94 @@ initAll(int argc, char **argv)
 	resetErrMsgsFlag();
 	localRet = rsconf.Load(&ourConf, ConfFile);
 
+#ifdef ENABLE_LIBCAPNG
+	if (loadConf->globals.bCapabilityDropEnabled) {
+		/*
+		* Drop capabilities to the necessary set
+		*/
+		int capng_rc, capng_failed = 0;
+		typedef struct capabilities_s {
+			int capability; /* capability code */
+			const char *name; /* name of the capability to be displayed */
+			/* is the capability present that is needed by rsyslog? if so we do not drop it */
+			sbool present;
+			capng_type_t type;
+		} capabilities_t;
+
+		capabilities_t capabilities[] = {
+			#define CAP_FIELD(code, type) { code, #code,  0 , type}
+			CAP_FIELD(CAP_BLOCK_SUSPEND, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_NET_RAW, CAPNG_EFFECTIVE | CAPNG_PERMITTED ),
+			CAP_FIELD(CAP_CHOWN, CAPNG_EFFECTIVE | CAPNG_PERMITTED ),
+			CAP_FIELD(CAP_IPC_LOCK, CAPNG_EFFECTIVE | CAPNG_PERMITTED ),
+			CAP_FIELD(CAP_LEASE, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_NET_ADMIN, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_NET_BIND_SERVICE, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_DAC_OVERRIDE, CAPNG_EFFECTIVE | CAPNG_PERMITTED | CAPNG_BOUNDING_SET),
+			CAP_FIELD(CAP_SETGID, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_SETUID, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_SYS_ADMIN, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_SYS_CHROOT, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_SYS_RESOURCE, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
+			CAP_FIELD(CAP_SYSLOG, CAPNG_EFFECTIVE | CAPNG_PERMITTED)
+			#undef CAP_FIELD
+		};
+
+		if (capng_have_capabilities(CAPNG_SELECT_CAPS) > CAPNG_NONE) {
+			/* Examine which capabilities are available to us, so we do not try to
+				drop something that is not present. We need to do this in two steps,
+				because capng_clear clears the capability set. In the second step,
+				we add back those caps, which were present before clearing the selected
+				posix capabilities set.
+			*/
+			unsigned long caps_len = sizeof(capabilities) / sizeof(capabilities_t);
+			for (unsigned long i = 0; i < caps_len; i++) {
+				if (capng_have_capability(CAPNG_EFFECTIVE, capabilities[i].capability)) {
+					capabilities[i].present = 1;
+				}
+			}
+
+			capng_clear(CAPNG_SELECT_BOTH);
+
+			for (unsigned long i = 0; i < caps_len; i++) {
+				if (capabilities[i].present) {
+					DBGPRINTF("The %s capability is present, "
+						"will try to preserve it.\n", capabilities[i].name);
+					if ((capng_rc = capng_update(CAPNG_ADD, capabilities[i].type,
+					capabilities[i].capability)) != 0) {
+						LogError(0, RS_RET_LIBCAPNG_ERR,
+								"could not update the internal posix capabilities"
+								" settings based on the options passed to it,"
+								" capng_update=%d", capng_rc);
+						capng_failed = 1;
+					}
+				} else {
+					DBGPRINTF("The %s capability is not present, "
+						"will not try to preserve it.\n", capabilities[i].name);
+				}
+			}
+
+			if ((capng_rc = capng_apply(CAPNG_SELECT_BOTH)) != 0) {
+				LogError(0, RS_RET_LIBCAPNG_ERR,
+					"could not transfer the specified internal posix capabilities "
+					"settings to the kernel, capng_apply=%d", capng_rc);
+				capng_failed = 1;
+			}
+
+			if (capng_failed) {
+				DBGPRINTF("Capabilities were not dropped successfully.\n");
+				if (loadConf->globals.bAbortOnFailedLibcapngSetup) {
+					ABORT_FINALIZE(RS_RET_LIBCAPNG_ERR);
+				}
+			} else {
+				DBGPRINTF("Capabilities were dropped successfully\n");
+			}
+		} else {
+			DBGPRINTF("No capabilities to drop\n");
+		}
+	}
+#endif
+
 	if(fp_rs_full_conf_output != NULL) {
 		if(fp_rs_full_conf_output != stdout) {
 			fclose(fp_rs_full_conf_output);
@@ -1565,7 +1737,7 @@ initAll(int argc, char **argv)
 		 * even on hard config errors. Note that this may lead to segfaults
 		 * or other malfunction further down the road.
 		 */
-		if((glblDevOptions & DEV_OPTION_KEEP_RUNNING_ON_HARD_CONF_ERROR) == 1) {
+		if((loadConf->globals.glblDevOptions & DEV_OPTION_KEEP_RUNNING_ON_HARD_CONF_ERROR) == 1) {
 			fprintf(stderr, "rsyslogd: NOTE: developer-only option set to keep rsyslog "
 				"running where it should abort - this can lead to "
 				"more problems later in the run.\n");
@@ -1592,7 +1764,7 @@ initAll(int argc, char **argv)
 		localRet = RS_RET_OK;
 	}
 	CHKiRet(localRet);
-	
+
 	CHKiRet(rsyslogd_InitStdRatelimiters());
 
 	if(bChDirRoot) {
@@ -1613,7 +1785,7 @@ initAll(int argc, char **argv)
 
 	hdlr_enable(SIGPIPE, SIG_IGN);
 	hdlr_enable(SIGXFSZ, SIG_IGN);
-	if(Debug || glblPermitCtlC) {
+	if(Debug || loadConf->globals.permitCtlC) {
 		hdlr_enable(SIGUSR1, rsyslogdDebugSwitch);
 		hdlr_enable(SIGINT,  rsyslogdDoDie);
 		hdlr_enable(SIGQUIT, rsyslogdDoDie);
@@ -1626,14 +1798,14 @@ initAll(int argc, char **argv)
 	hdlr_enable(SIGCHLD, hdlr_sigchld);
 	hdlr_enable(SIGHUP, hdlr_sighup);
 
-	if(rsconfNeedDropPriv(ourConf)) {
+	if(rsconfNeedDropPriv(loadConf)) {
 		/* need to write pid file early as we may loose permissions */
 		CHKiRet(writePidFile());
 	}
 
 	CHKiRet(rsconf.Activate(ourConf));
 
-	if(ourConf->globals.bLogStatusMsgs) {
+	if(runConf->globals.bLogStatusMsgs) {
 		char bufStartUpMsg[512];
 		snprintf(bufStartUpMsg, sizeof(bufStartUpMsg),
 			 "[origin software=\"rsyslogd\" " "swVersion=\"" VERSION \
@@ -1642,7 +1814,7 @@ initAll(int argc, char **argv)
 		logmsgInternal(NO_ERRCODE, LOG_SYSLOG|LOG_INFO, (uchar*)bufStartUpMsg, 0);
 	}
 
-	if(!rsconfNeedDropPriv(ourConf)) {
+	if(!rsconfNeedDropPriv(runConf)) {
 		CHKiRet(writePidFile());
 	}
 
@@ -1654,7 +1826,7 @@ initAll(int argc, char **argv)
 		stddbg = -1; /* turn off writing to fd 1 */
 		close(1);
 		close(2);
-		ourConf->globals.bErrMsgToStderr = 0;
+		runConf->globals.bErrMsgToStderr = 0;
 	}
 
 finalize_it:
@@ -1749,7 +1921,6 @@ finalize_it:
  */
 DEFFUNC_llExecFunc(doHUPActions)
 {
-	dbgprintf("doHUP called\n");
 	actionCallHUPHdlr((action_t*) pData);
 	return RS_RET_OK; /* we ignore errors, we can not do anything either way */
 }
@@ -1770,6 +1941,7 @@ doHUP(void)
 {
 	char buf[512];
 
+	DBGPRINTF("doHUP: doing modules\n");
 	if(ourConf->globals.bLogStatusMsgs) {
 		snprintf(buf, sizeof(buf),
 			 "[origin software=\"rsyslogd\" " "swVersion=\"" VERSION
@@ -1781,8 +1953,11 @@ doHUP(void)
 
 	queryLocalHostname(); /* re-read our name */
 	ruleset.IterateAllActions(ourConf, doHUPActions, NULL);
+	DBGPRINTF("doHUP: doing modules\n");
 	modDoHUP();
+	DBGPRINTF("doHUP: doing lookup tables\n");
 	lookupDoHUP();
+	DBGPRINTF("doHUP: doing errmsgs\n");
 	errmsgDoHUP();
 }
 
@@ -1820,7 +1995,7 @@ rsyslogdDoDie(int sig)
 		abort();
 	}
 	bFinished = sig;
-	if(glblDebugOnShutdown) {
+	if(runConf->globals.debugOnShutdown) {
 		/* kind of hackish - set to 0, so that debug_swith will enable
 		 * and AND emit the "start debug log" message.
 		 */
@@ -1842,7 +2017,7 @@ wait_timeout(const sigset_t *sigmask)
 {
 	struct timespec tvSelectTimeout;
 
-	tvSelectTimeout.tv_sec = janitorInterval * 60; /* interval is in minutes! */
+	tvSelectTimeout.tv_sec = runConf->globals.janitorInterval * 60; /* interval is in minutes! */
 	tvSelectTimeout.tv_nsec = 0;
 
 #ifdef _AIX
@@ -1856,14 +2031,17 @@ wait_timeout(const sigset_t *sigmask)
 		 * in useful subsecond steps.
 		 */
 		const long wait_period = 500000000; /* wait period in nanoseconds */
-		int timeout = janitorInterval * 60 * (1000000000 / wait_period);
+		int timeout = runConf->globals.janitorInterval * 60 * (1000000000 / wait_period);
 
 		tvSelectTimeout.tv_sec = 0;
 		tvSelectTimeout.tv_nsec = wait_period;
 		do {
+			pthread_mutex_lock(&mutHadHUP);
 			if(bFinished || bHadHUP) {
+				pthread_mutex_unlock(&mutHadHUP);
 				break;
 			}
+			pthread_mutex_unlock(&mutHadHUP);
 			pselect(1, NULL, NULL, NULL, &tvSelectTimeout, sigmask);
 		} while(--timeout > 0);
 	} else {
@@ -1934,7 +2112,7 @@ reapChild(void)
 		int status;
 		child = waitpid(-1, &status, WNOHANG);
 		if(child != -1 && child != 0) {
-			glblReportChildProcessExit(NULL, child, status);
+			glblReportChildProcessExit(runConf, NULL, child, status);
 		}
 	} while(child > 0);
 }
@@ -1951,6 +2129,7 @@ mainloop(void)
 	time_t tTime;
 	sigset_t origmask;
 	sigset_t sigblockset;
+	int need_free_mutex;
 
 	sigemptyset(&sigblockset);
 	sigaddset(&sigblockset, SIGTERM);
@@ -1958,18 +2137,34 @@ mainloop(void)
 	sigaddset(&sigblockset, SIGHUP);
 
 	do {
-		processImInternal();
-
 		pthread_sigmask(SIG_BLOCK, &sigblockset, &origmask);
+		pthread_mutex_lock(&mutChildDied);
+		need_free_mutex = 1;
 		if(bChildDied) {
-			reapChild();
 			bChildDied = 0;
+			pthread_mutex_unlock(&mutChildDied);
+			need_free_mutex = 0;
+			reapChild();
+		}
+		if(need_free_mutex) {
+			pthread_mutex_unlock(&mutChildDied);
 		}
 
+		pthread_mutex_lock(&mutHadHUP);
+		need_free_mutex = 1;
 		if(bHadHUP) {
+			need_free_mutex = 0;
+			pthread_mutex_unlock(&mutHadHUP);
 			doHUP();
+			pthread_mutex_lock(&mutHadHUP);
 			bHadHUP = 0;
+			pthread_mutex_unlock(&mutHadHUP);
 		}
+		if(need_free_mutex) {
+			pthread_mutex_unlock(&mutHadHUP);
+		}
+
+		processImInternal();
 
 		if(bFinished)
 			break;	/* exit as quickly as possible */
@@ -2018,7 +2213,7 @@ deinitAll(void)
 	/* close the inputs */
 	DBGPRINTF("Terminating input threads...\n");
 	glbl.SetGlobalInputTermination();
-	
+
 	thrdTerminateAll();
 
 	/* and THEN send the termination log message (see long comment above) */
@@ -2039,8 +2234,8 @@ deinitAll(void)
 
 	/* drain queue (if configured so) and stop main queue worker thread pool */
 	DBGPRINTF("Terminating main queue...\n");
-	qqueueDestruct(&pMsgQueue);
-	pMsgQueue = NULL;
+	qqueueDestruct(&runConf->pMsgQueue);
+	runConf->pMsgQueue = NULL;
 
 	/* Free ressources and close connections. This includes flushing any remaining
 	 * repeated msgs.
@@ -2082,9 +2277,7 @@ deinitAll(void)
 	dbgClassExit();
 
 	/* NO CODE HERE - dbgClassExit() must be the last thing before exit()! */
-	if(strcmp(PidFile, NO_PIDFILE)) {
-		unlink(PidFile);
-	}
+	clearPidFile();
 }
 
 /* This is the main entry point into rsyslogd. This must be a function in its own
@@ -2101,6 +2294,8 @@ main(int argc, char **argv)
 	 * internally by rsyslogd.
 	 */
 
+	pthread_mutex_init(&mutHadHUP, NULL);
+	pthread_mutex_init(&mutChildDied, NULL);
 	strncpy(progname,argv[0], sizeof(progname)-1);
 	addrsz = sizeof(srcaddr);
 	if ((rc = getsockname(0, &srcaddr, &addrsz)) < 0) {
@@ -2137,16 +2332,14 @@ main(int argc, char **argv)
 	/* disable case-sensitive comparisons in variable subsystem: */
 	fjson_global_do_case_sensitive_comparison(0);
 
-	const char *const log_dflt = getenv("RSYSLOG_DFLT_LOG_INTERNAL");
-	if(log_dflt != NULL && !strcmp(log_dflt, "1"))
-		bProcessInternalMessages = 1;
 	dbgClassInit();
+
 	initAll(argc, argv);
 #ifdef HAVE_LIBSYSTEMD
 	sd_notify(0, "READY=1");
 	dbgprintf("done signaling to systemd that we are ready!\n");
 #endif
-	DBGPRINTF("max message size: %d\n", glblGetMaxLine());
+	DBGPRINTF("max message size: %d\n", glblGetMaxLine(runConf));
 	DBGPRINTF("----RSYSLOGD INITIALIZED\n");
 	LogMsg(0, RS_RET_OK, LOG_DEBUG, "rsyslogd fully started up and initialized "
 		"- begin actual processing");
@@ -2154,9 +2347,8 @@ main(int argc, char **argv)
 	mainloop();
 	LogMsg(0, RS_RET_OK, LOG_DEBUG, "rsyslogd shutting down");
 	deinitAll();
-#ifdef ENABLE_LIBLOGGING_STDLOG
-	stdlog_close(stdlog_hdl);
-#endif
 	osf_close();
+	pthread_mutex_destroy(&mutChildDied);
+	pthread_mutex_destroy(&mutHadHUP);
 	return 0;
 }

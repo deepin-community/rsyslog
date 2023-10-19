@@ -95,7 +95,7 @@ sbin_PROGRAMS =
 
 #
 # regular expression support
-# 
+#
 @ENABLE_REGEXP_TRUE@am__append_3 = lmregexp.la
 @ENABLE_LIBLOGGING_STDLOG_TRUE@@ENABLE_REGEXP_TRUE@am__append_4 = $(LIBLOGGING_STDLOG_CFLAGS)
 @ENABLE_LIBLOGGING_STDLOG_TRUE@@ENABLE_REGEXP_TRUE@am__append_5 = $(LIBLOGGING_STDLOG_LIBS)
@@ -105,7 +105,7 @@ sbin_PROGRAMS =
 # netstream drivers
 
 # plain tcp driver - main driver
-@ENABLE_INET_TRUE@am__append_8 = lmnet.la lmnetstrms.la lmnsd_ptcp.la
+@ENABLE_INET_TRUE@am__append_8 = lmnetstrms.la lmnsd_ptcp.la
 @ENABLE_INET_TRUE@@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_9 = $(LIBLOGGING_STDLOG_CFLAGS)
 @ENABLE_INET_TRUE@@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_10 = $(LIBLOGGING_STDLOG_LIBS)
 @ENABLE_INET_TRUE@@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_11 = $(LIBLOGGING_STDLOG_CFLAGS)
@@ -115,12 +115,12 @@ sbin_PROGRAMS =
 
 #
 # openssl netstream driver
-# 
+#
 @ENABLE_OPENSSL_TRUE@am__append_15 = lmnsd_ossl.la
 
 #
 # GnuTLS netstream driver
-# 
+#
 @ENABLE_GNUTLS_TRUE@am__append_16 = lmnsd_gtls.la
 
 #
@@ -130,18 +130,23 @@ sbin_PROGRAMS =
 @ENABLE_LIBGCRYPT_TRUE@am__append_18 = lmcry_gcry.la
 
 #
+# support library for zstd
+#
+@ENABLE_LIBZSTD_TRUE@am__append_19 = lmzstdw.la
+
+#
 # gssapi support
-# 
-@ENABLE_GSSAPI_TRUE@am__append_19 = lmgssutil.la
-@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_20 = $(LIBLOGGING_STDLOG_CFLAGS)
-@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_21 = $(LIBLOGGING_STDLOG_LIBS)
-@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_22 = $(LIBLOGGING_STDLOG_CFLAGS)
-@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_23 = $(LIBLOGGING_STDLOG_LIBS)
+#
+@ENABLE_GSSAPI_TRUE@am__append_20 = lmgssutil.la
+@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_21 = $(LIBLOGGING_STDLOG_CFLAGS)
+@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_22 = $(LIBLOGGING_STDLOG_LIBS)
+@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_23 = $(LIBLOGGING_STDLOG_CFLAGS)
+@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_24 = $(LIBLOGGING_STDLOG_LIBS)
 
 #
 # support library for Guardtime KSI-LS12
 #
-@ENABLE_KSI_LS12_TRUE@am__append_24 = lmsig_ksi_ls12.la
+@ENABLE_KSI_LS12_TRUE@am__append_25 = lmsig_ksi_ls12.la
 subdir = runtime
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_define.m4 \
@@ -225,7 +230,7 @@ am_librsyslog_la_OBJECTS = librsyslog_la-rsyslog.lo \
 	../librsyslog_la-action.lo ../librsyslog_la-threads.lo \
 	../librsyslog_la-parse.lo librsyslog_la-hashtable.lo \
 	librsyslog_la-hashtable_itr.lo ../librsyslog_la-outchannel.lo \
-	../librsyslog_la-template.lo
+	../librsyslog_la-template.lo librsyslog_la-timezones.lo
 librsyslog_la_OBJECTS = $(am_librsyslog_la_OBJECTS)
 am__lmcry_gcry_la_SOURCES_DIST = lmcry_gcry.c lmcry_gcry.h
 @ENABLE_LIBGCRYPT_TRUE@am_lmcry_gcry_la_OBJECTS =  \
@@ -245,13 +250,11 @@ lmgssutil_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(lmgssutil_la_LDFLAGS) $(LDFLAGS) -o $@
 @ENABLE_GSSAPI_TRUE@am_lmgssutil_la_rpath = -rpath $(pkglibdir)
 lmnet_la_DEPENDENCIES =
-am__lmnet_la_SOURCES_DIST = net.c net.h
-@ENABLE_INET_TRUE@am_lmnet_la_OBJECTS = lmnet_la-net.lo
+am_lmnet_la_OBJECTS = lmnet_la-net.lo
 lmnet_la_OBJECTS = $(am_lmnet_la_OBJECTS)
 lmnet_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(lmnet_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_INET_TRUE@am_lmnet_la_rpath = -rpath $(pkglibdir)
 lmnetstrms_la_DEPENDENCIES =
 am__lmnetstrms_la_SOURCES_DIST = netstrms.c netstrms.h netstrm.c \
 	netstrm.h nssel.c nssel.h nspoll.c nspoll.h
@@ -341,6 +344,14 @@ lmzlibw_la_OBJECTS = $(am_lmzlibw_la_OBJECTS)
 lmzlibw_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(lmzlibw_la_LDFLAGS) $(LDFLAGS) -o $@
+lmzstdw_la_DEPENDENCIES =
+am__lmzstdw_la_SOURCES_DIST = zstdw.c zstdw.h
+@ENABLE_LIBZSTD_TRUE@am_lmzstdw_la_OBJECTS = lmzstdw_la-zstdw.lo
+lmzstdw_la_OBJECTS = $(am_lmzstdw_la_OBJECTS)
+lmzstdw_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(lmzstdw_la_LDFLAGS) $(LDFLAGS) -o $@
+@ENABLE_LIBZSTD_TRUE@am_lmzstdw_la_rpath = -rpath $(pkglibdir)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -395,6 +406,7 @@ am__depfiles_remade = ../$(DEPDIR)/librsyslog_la-action.Plo \
 	./$(DEPDIR)/librsyslog_la-stream.Plo \
 	./$(DEPDIR)/librsyslog_la-strgen.Plo \
 	./$(DEPDIR)/librsyslog_la-stringbuf.Plo \
+	./$(DEPDIR)/librsyslog_la-timezones.Plo \
 	./$(DEPDIR)/librsyslog_la-var.Plo \
 	./$(DEPDIR)/librsyslog_la-wti.Plo \
 	./$(DEPDIR)/librsyslog_la-wtp.Plo \
@@ -419,7 +431,8 @@ am__depfiles_remade = ../$(DEPDIR)/librsyslog_la-action.Plo \
 	./$(DEPDIR)/lmtcpclt_la-tcpclt.Plo \
 	./$(DEPDIR)/lmtcpsrv_la-tcps_sess.Plo \
 	./$(DEPDIR)/lmtcpsrv_la-tcpsrv.Plo \
-	./$(DEPDIR)/lmzlibw_la-zlibw.Plo
+	./$(DEPDIR)/lmzlibw_la-zlibw.Plo \
+	./$(DEPDIR)/lmzstdw_la-zstdw.Plo
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -445,17 +458,19 @@ SOURCES = $(libgcry_la_SOURCES) $(librsyslog_la_SOURCES) \
 	$(lmnsd_gtls_la_SOURCES) $(lmnsd_ossl_la_SOURCES) \
 	$(lmnsd_ptcp_la_SOURCES) $(lmregexp_la_SOURCES) \
 	$(lmsig_ksi_ls12_la_SOURCES) $(lmtcpclt_la_SOURCES) \
-	$(lmtcpsrv_la_SOURCES) $(lmzlibw_la_SOURCES)
+	$(lmtcpsrv_la_SOURCES) $(lmzlibw_la_SOURCES) \
+	$(lmzstdw_la_SOURCES)
 DIST_SOURCES = $(am__libgcry_la_SOURCES_DIST) $(librsyslog_la_SOURCES) \
 	$(am__lmcry_gcry_la_SOURCES_DIST) \
-	$(am__lmgssutil_la_SOURCES_DIST) $(am__lmnet_la_SOURCES_DIST) \
+	$(am__lmgssutil_la_SOURCES_DIST) $(lmnet_la_SOURCES) \
 	$(am__lmnetstrms_la_SOURCES_DIST) \
 	$(am__lmnsd_gtls_la_SOURCES_DIST) \
 	$(am__lmnsd_ossl_la_SOURCES_DIST) \
 	$(am__lmnsd_ptcp_la_SOURCES_DIST) \
 	$(am__lmregexp_la_SOURCES_DIST) \
 	$(am__lmsig_ksi_ls12_la_SOURCES_DIST) $(lmtcpclt_la_SOURCES) \
-	$(lmtcpsrv_la_SOURCES) $(lmzlibw_la_SOURCES)
+	$(lmtcpsrv_la_SOURCES) $(lmzlibw_la_SOURCES) \
+	$(am__lmzstdw_la_SOURCES_DIST)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -515,6 +530,7 @@ ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
+FAUP_LIBS = @FAUP_LIBS@
 FGREP = @FGREP@
 GLIB_CFLAGS = @GLIB_CFLAGS@
 GLIB_LIBS = @GLIB_LIBS@
@@ -541,6 +557,10 @@ LDFLAGS = @LDFLAGS@
 LEX = @LEX@
 LEXLIB = @LEXLIB@
 LEX_OUTPUT_ROOT = @LEX_OUTPUT_ROOT@
+LIBCAPNG_CFLAGS = @LIBCAPNG_CFLAGS@
+LIBCAPNG_LIBS = @LIBCAPNG_LIBS@
+LIBCAPNG_PRESENT_CFLAGS = @LIBCAPNG_PRESENT_CFLAGS@
+LIBCAPNG_PRESENT_LIBS = @LIBCAPNG_PRESENT_LIBS@
 LIBDBI_CFLAGS = @LIBDBI_CFLAGS@
 LIBDBI_LIBS = @LIBDBI_LIBS@
 LIBESTR_CFLAGS = @LIBESTR_CFLAGS@
@@ -609,6 +629,8 @@ PKG_CONFIG_LIBDIR = @PKG_CONFIG_LIBDIR@
 PKG_CONFIG_PATH = @PKG_CONFIG_PATH@
 PROTON_CFLAGS = @PROTON_CFLAGS@
 PROTON_LIBS = @PROTON_LIBS@
+PROTON_PROACTOR_CFLAGS = @PROTON_PROACTOR_CFLAGS@
+PROTON_PROACTOR_LIBS = @PROTON_PROACTOR_LIBS@
 PTHREADS_CFLAGS = @PTHREADS_CFLAGS@
 PTHREADS_LIBS = @PTHREADS_LIBS@
 PYTHON = @PYTHON@
@@ -620,6 +642,7 @@ RABBITMQ_CFLAGS = @RABBITMQ_CFLAGS@
 RABBITMQ_LIBS = @RABBITMQ_LIBS@
 RANLIB = @RANLIB@
 READLINK = @READLINK@
+REDIS = @REDIS@
 RELP_CFLAGS = @RELP_CFLAGS@
 RELP_LIBS = @RELP_LIBS@
 RSRT_CFLAGS = @RSRT_CFLAGS@
@@ -659,6 +682,8 @@ YACC_FOUND = @YACC_FOUND@
 YFLAGS = @YFLAGS@
 ZLIB_CFLAGS = @ZLIB_CFLAGS@
 ZLIB_LIBS = @ZLIB_LIBS@
+ZSTD_CFLAGS = @ZSTD_CFLAGS@
+ZSTD_LIBS = @ZSTD_LIBS@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -723,10 +748,15 @@ noinst_LTLIBRARIES = librsyslog.la $(am__append_17)
 
 #
 # zlib support
-# 
-pkglib_LTLIBRARIES = $(am__append_3) lmzlibw.la $(am__append_8) \
-	$(am__append_15) $(am__append_16) $(am__append_18) \
-	$(am__append_19) lmtcpsrv.la lmtcpclt.la $(am__append_24)
+#
+
+#
+# basic network support, needed for rsyslog startup (e.g. our own system name)
+#
+pkglib_LTLIBRARIES = $(am__append_3) lmzlibw.la lmnet.la \
+	$(am__append_8) $(am__append_15) $(am__append_16) \
+	$(am__append_18) $(am__append_19) $(am__append_20) lmtcpsrv.la \
+	lmtcpclt.la $(am__append_25)
 #pkglib_LTLIBRARIES = librsyslog.la
 librsyslog_la_SOURCES = \
 	rsyslog.c \
@@ -826,7 +856,9 @@ librsyslog_la_SOURCES = \
 	../outchannel.c \
 	../outchannel.h \
 	../template.c \
-	../template.h
+	../template.h \
+	timezones.c \
+	timezones.h
 
 #librsyslog_la_LDFLAGS = -module -avoid-version
 @WITH_MODDIRS_FALSE@librsyslog_la_CPPFLAGS = -DSD_EXPORT_SYMBOLS \
@@ -863,16 +895,11 @@ lmzlibw_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS) \
 lmzlibw_la_LDFLAGS = -module -avoid-version $(ZLIB_LIBS) \
 	$(am__append_7)
 lmzlibw_la_LIBADD = 
-#
-# network support
-# 
-@ENABLE_INET_TRUE@lmnet_la_SOURCES = net.c net.h
-@ENABLE_INET_TRUE@lmnet_la_CPPFLAGS = $(PTHREADS_CFLAGS) \
-@ENABLE_INET_TRUE@	$(RSRT_CFLAGS) $(am__append_9)
-@ENABLE_INET_TRUE@lmnet_la_LDFLAGS = -module -avoid-version \
-@ENABLE_INET_TRUE@	../compat/compat_la-getifaddrs.lo \
-@ENABLE_INET_TRUE@	$(am__append_10)
-@ENABLE_INET_TRUE@lmnet_la_LIBADD = 
+lmnet_la_SOURCES = net.c net.h
+lmnet_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS) $(am__append_9)
+lmnet_la_LDFLAGS = -module -avoid-version \
+	../compat/compat_la-getifaddrs.lo $(am__append_10)
+lmnet_la_LIBADD = 
 
 # network stream master class and stream factory
 @ENABLE_INET_TRUE@lmnetstrms_la_SOURCES = netstrms.c netstrms.h \
@@ -909,6 +936,10 @@ lmzlibw_la_LIBADD =
 @ENABLE_LIBGCRYPT_TRUE@lmcry_gcry_la_CPPFLAGS = $(RSRT_CFLAGS) $(LIBGCRYPT_CFLAGS)
 @ENABLE_LIBGCRYPT_TRUE@lmcry_gcry_la_LDFLAGS = -module -avoid-version
 @ENABLE_LIBGCRYPT_TRUE@lmcry_gcry_la_LIBADD = libgcry.la $(LIBGCRYPT_LIBS)
+@ENABLE_LIBZSTD_TRUE@lmzstdw_la_SOURCES = zstdw.c zstdw.h
+@ENABLE_LIBZSTD_TRUE@lmzstdw_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS)
+@ENABLE_LIBZSTD_TRUE@lmzstdw_la_LDFLAGS = -module -avoid-version $(ZSTD_LIBS)
+@ENABLE_LIBZSTD_TRUE@lmzstdw_la_LIBADD = -lzstd
 @ENABLE_GSSAPI_TRUE@lmgssutil_la_SOURCES = gss-misc.c gss-misc.h
 @ENABLE_GSSAPI_TRUE@lmgssutil_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS)
 @ENABLE_GSSAPI_TRUE@lmgssutil_la_LDFLAGS = -module -avoid-version
@@ -924,8 +955,8 @@ lmtcpsrv_la_SOURCES = \
 	tcpsrv.h
 
 lmtcpsrv_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS) \
-	$(am__append_20)
-lmtcpsrv_la_LDFLAGS = -module -avoid-version $(am__append_21)
+	$(am__append_21)
+lmtcpsrv_la_LDFLAGS = -module -avoid-version $(am__append_22)
 lmtcpsrv_la_LIBADD = 
 
 #
@@ -936,8 +967,8 @@ lmtcpclt_la_SOURCES = \
 	tcpclt.h
 
 lmtcpclt_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS) \
-	$(am__append_22)
-lmtcpclt_la_LDFLAGS = -module -avoid-version $(am__append_23)
+	$(am__append_23)
+lmtcpclt_la_LDFLAGS = -module -avoid-version $(am__append_24)
 lmtcpclt_la_LIBADD = 
 @ENABLE_KSI_LS12_TRUE@lmsig_ksi_ls12_la_SOURCES = lmsig_ksi-ls12.c lmsig_ksi-ls12.h lib_ksils12.c \
 @ENABLE_KSI_LS12_TRUE@			lib_ksils12.h lib_ksi_queue.c lib_ksi_queue.h
@@ -1102,7 +1133,7 @@ lmgssutil.la: $(lmgssutil_la_OBJECTS) $(lmgssutil_la_DEPENDENCIES) $(EXTRA_lmgss
 	$(AM_V_CCLD)$(lmgssutil_la_LINK) $(am_lmgssutil_la_rpath) $(lmgssutil_la_OBJECTS) $(lmgssutil_la_LIBADD) $(LIBS)
 
 lmnet.la: $(lmnet_la_OBJECTS) $(lmnet_la_DEPENDENCIES) $(EXTRA_lmnet_la_DEPENDENCIES) 
-	$(AM_V_CCLD)$(lmnet_la_LINK) $(am_lmnet_la_rpath) $(lmnet_la_OBJECTS) $(lmnet_la_LIBADD) $(LIBS)
+	$(AM_V_CCLD)$(lmnet_la_LINK) -rpath $(pkglibdir) $(lmnet_la_OBJECTS) $(lmnet_la_LIBADD) $(LIBS)
 
 lmnetstrms.la: $(lmnetstrms_la_OBJECTS) $(lmnetstrms_la_DEPENDENCIES) $(EXTRA_lmnetstrms_la_DEPENDENCIES) 
 	$(AM_V_CCLD)$(lmnetstrms_la_LINK) $(am_lmnetstrms_la_rpath) $(lmnetstrms_la_OBJECTS) $(lmnetstrms_la_LIBADD) $(LIBS)
@@ -1130,6 +1161,9 @@ lmtcpsrv.la: $(lmtcpsrv_la_OBJECTS) $(lmtcpsrv_la_DEPENDENCIES) $(EXTRA_lmtcpsrv
 
 lmzlibw.la: $(lmzlibw_la_OBJECTS) $(lmzlibw_la_DEPENDENCIES) $(EXTRA_lmzlibw_la_DEPENDENCIES) 
 	$(AM_V_CCLD)$(lmzlibw_la_LINK) -rpath $(pkglibdir) $(lmzlibw_la_OBJECTS) $(lmzlibw_la_LIBADD) $(LIBS)
+
+lmzstdw.la: $(lmzstdw_la_OBJECTS) $(lmzstdw_la_DEPENDENCIES) $(EXTRA_lmzstdw_la_DEPENDENCIES) 
+	$(AM_V_CCLD)$(lmzstdw_la_LINK) $(am_lmzstdw_la_rpath) $(lmzstdw_la_OBJECTS) $(lmzstdw_la_LIBADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -1178,6 +1212,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-stream.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-strgen.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-stringbuf.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-timezones.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-var.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-wti.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/librsyslog_la-wtp.Plo@am__quote@ # am--include-marker
@@ -1203,6 +1238,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmtcpsrv_la-tcps_sess.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmtcpsrv_la-tcpsrv.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmzlibw_la-zlibw.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmzstdw_la-zstdw.Plo@am__quote@ # am--include-marker
 
 $(am__depfiles_remade):
 	@$(MKDIR_P) $(@D)
@@ -1528,6 +1564,13 @@ librsyslog_la-hashtable_itr.lo: hashtable_itr.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(librsyslog_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ../librsyslog_la-template.lo `test -f '../template.c' || echo '$(srcdir)/'`../template.c
 
+librsyslog_la-timezones.lo: timezones.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(librsyslog_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT librsyslog_la-timezones.lo -MD -MP -MF $(DEPDIR)/librsyslog_la-timezones.Tpo -c -o librsyslog_la-timezones.lo `test -f 'timezones.c' || echo '$(srcdir)/'`timezones.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/librsyslog_la-timezones.Tpo $(DEPDIR)/librsyslog_la-timezones.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='timezones.c' object='librsyslog_la-timezones.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(librsyslog_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o librsyslog_la-timezones.lo `test -f 'timezones.c' || echo '$(srcdir)/'`timezones.c
+
 lmcry_gcry_la-lmcry_gcry.lo: lmcry_gcry.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmcry_gcry_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT lmcry_gcry_la-lmcry_gcry.lo -MD -MP -MF $(DEPDIR)/lmcry_gcry_la-lmcry_gcry.Tpo -c -o lmcry_gcry_la-lmcry_gcry.lo `test -f 'lmcry_gcry.c' || echo '$(srcdir)/'`lmcry_gcry.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/lmcry_gcry_la-lmcry_gcry.Tpo $(DEPDIR)/lmcry_gcry_la-lmcry_gcry.Plo
@@ -1681,6 +1724,13 @@ lmzlibw_la-zlibw.lo: zlibw.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='zlibw.c' object='lmzlibw_la-zlibw.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmzlibw_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o lmzlibw_la-zlibw.lo `test -f 'zlibw.c' || echo '$(srcdir)/'`zlibw.c
+
+lmzstdw_la-zstdw.lo: zstdw.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmzstdw_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT lmzstdw_la-zstdw.lo -MD -MP -MF $(DEPDIR)/lmzstdw_la-zstdw.Tpo -c -o lmzstdw_la-zstdw.lo `test -f 'zstdw.c' || echo '$(srcdir)/'`zstdw.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/lmzstdw_la-zstdw.Tpo $(DEPDIR)/lmzstdw_la-zstdw.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='zstdw.c' object='lmzstdw_la-zstdw.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmzstdw_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o lmzstdw_la-zstdw.lo `test -f 'zstdw.c' || echo '$(srcdir)/'`zstdw.c
 
 mostlyclean-libtool:
 	-rm -f *.lo
@@ -1858,6 +1908,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/librsyslog_la-stream.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-strgen.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-stringbuf.Plo
+	-rm -f ./$(DEPDIR)/librsyslog_la-timezones.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-var.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-wti.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-wtp.Plo
@@ -1883,6 +1934,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/lmtcpsrv_la-tcps_sess.Plo
 	-rm -f ./$(DEPDIR)/lmtcpsrv_la-tcpsrv.Plo
 	-rm -f ./$(DEPDIR)/lmzlibw_la-zlibw.Plo
+	-rm -f ./$(DEPDIR)/lmzstdw_la-zstdw.Plo
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -1967,6 +2019,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/librsyslog_la-stream.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-strgen.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-stringbuf.Plo
+	-rm -f ./$(DEPDIR)/librsyslog_la-timezones.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-var.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-wti.Plo
 	-rm -f ./$(DEPDIR)/librsyslog_la-wtp.Plo
@@ -1992,6 +2045,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/lmtcpsrv_la-tcps_sess.Plo
 	-rm -f ./$(DEPDIR)/lmtcpsrv_la-tcpsrv.Plo
 	-rm -f ./$(DEPDIR)/lmzlibw_la-zlibw.Plo
+	-rm -f ./$(DEPDIR)/lmzstdw_la-zstdw.Plo
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
