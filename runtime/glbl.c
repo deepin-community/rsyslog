@@ -7,7 +7,7 @@
  *
  * Module begun 2008-04-16 by Rainer Gerhards
  *
- * Copyright 2008-2022 Rainer Gerhards and Adiscon GmbH.
+ * Copyright 2008-2023 Rainer Gerhards and Adiscon GmbH.
  *
  * This file is part of the rsyslog runtime library.
  *
@@ -119,6 +119,7 @@ static struct cnfparamdescr cnfparamdescr[] = {
 	{ "defaultnetstreamdriverkeyfile", eCmdHdlrString, 0 },
 	{ "defaultnetstreamdrivercertfile", eCmdHdlrString, 0 },
 	{ "defaultnetstreamdriver", eCmdHdlrString, 0 },
+	{ "defaultopensslengine", eCmdHdlrString, 0 },
 	{ "netstreamdrivercaextrafiles", eCmdHdlrString, 0 },
 	{ "maxmessagesize", eCmdHdlrSize, 0 },
 	{ "oversizemsg.errorfile", eCmdHdlrGetWord, 0 },
@@ -410,6 +411,7 @@ setDfltNetstrmDrvrCAF(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 	DEFiRet;
 	FILE *fp;
 	free(loadConf->globals.pszDfltNetstrmDrvrCAF);
+	loadConf->globals.pszDfltNetstrmDrvrCAF = pNewVal;
 	fp = fopen((const char*)pNewVal, "r");
 	if(fp == NULL) {
 		LogError(errno, RS_RET_NO_FILE_ACCESS,
@@ -417,7 +419,6 @@ setDfltNetstrmDrvrCAF(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 			"could not be accessed", pNewVal);
 	} else {
 		fclose(fp);
-		loadConf->globals.pszDfltNetstrmDrvrCAF = pNewVal;
 	}
 
 	RETiRet;
@@ -458,6 +459,7 @@ setDfltNetstrmDrvrCRLF(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 	DEFiRet;
 	FILE *fp;
 	free(loadConf->globals.pszDfltNetstrmDrvrCRLF);
+	loadConf->globals.pszDfltNetstrmDrvrCRLF = pNewVal;
 	fp = fopen((const char*)pNewVal, "r");
 	if(fp == NULL) {
 		LogError(errno, RS_RET_NO_FILE_ACCESS,
@@ -465,7 +467,6 @@ setDfltNetstrmDrvrCRLF(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 			"could not be accessed", pNewVal);
 	} else {
 		fclose(fp);
-		loadConf->globals.pszDfltNetstrmDrvrCRLF = pNewVal;
 	}
 
 	RETiRet;
@@ -478,6 +479,7 @@ setDfltNetstrmDrvrCertFile(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 	FILE *fp;
 
 	free(loadConf->globals.pszDfltNetstrmDrvrCertFile);
+	loadConf->globals.pszDfltNetstrmDrvrCertFile = pNewVal;
 	fp = fopen((const char*)pNewVal, "r");
 	if(fp == NULL) {
 		LogError(errno, RS_RET_NO_FILE_ACCESS,
@@ -485,7 +487,6 @@ setDfltNetstrmDrvrCertFile(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 			"could not be accessed", pNewVal);
 	} else {
 		fclose(fp);
-		loadConf->globals.pszDfltNetstrmDrvrCertFile = pNewVal;
 	}
 
 	RETiRet;
@@ -497,6 +498,7 @@ setDfltNetstrmDrvrKeyFile(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 	FILE *fp;
 
 	free(loadConf->globals.pszDfltNetstrmDrvrKeyFile);
+	loadConf->globals.pszDfltNetstrmDrvrKeyFile = pNewVal;
 	fp = fopen((const char*)pNewVal, "r");
 	if(fp == NULL) {
 		LogError(errno, RS_RET_NO_FILE_ACCESS,
@@ -504,7 +506,6 @@ setDfltNetstrmDrvrKeyFile(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 			"could not be accessed", pNewVal);
 	} else {
 		fclose(fp);
-		loadConf->globals.pszDfltNetstrmDrvrKeyFile = pNewVal;
 	}
 
 	RETiRet;
@@ -517,6 +518,15 @@ setDfltNetstrmDrvr(void __attribute__((unused)) *pVal, uchar *pNewVal) {
 	loadConf->globals.pszDfltNetstrmDrvr = pNewVal;
 	RETiRet;
 }
+
+static rsRetVal
+setDfltOpensslEngine(void __attribute__((unused)) *pVal, uchar *pNewVal) {
+	DEFiRet;
+	free(loadConf->globals.pszDfltOpensslEngine);
+	loadConf->globals.pszDfltOpensslEngine = pNewVal;
+	RETiRet;
+}
+
 
 static rsRetVal
 setParserControlCharacterEscapePrefix(void __attribute__((unused)) *pVal, uchar *pNewVal) {
@@ -904,6 +914,13 @@ GetDfltNetstrmDrvr(rsconf_t *cnf)
 	return(cnf->globals.pszDfltNetstrmDrvr == NULL ? DFLT_NETSTRM_DRVR : cnf->globals.pszDfltNetstrmDrvr);
 }
 
+/* return the current default openssl engine name */
+static uchar*
+GetDfltOpensslEngine(rsconf_t *cnf)
+{
+	return(cnf->globals.pszDfltOpensslEngine);
+}
+
 /* [ar] Source IP for local client to be used on multihomed host */
 static rsRetVal
 SetSourceIPofLocalClient(uchar *newname)
@@ -952,6 +969,7 @@ CODESTARTobjQueryInterface(glbl)
 	pIf->GetDfltNetstrmDrvrCertFile = GetDfltNetstrmDrvrCertFile;
 	pIf->GetDfltNetstrmDrvrKeyFile = GetDfltNetstrmDrvrKeyFile;
 	pIf->GetDfltNetstrmDrvr = GetDfltNetstrmDrvr;
+	pIf->GetDfltOpensslEngine = GetDfltOpensslEngine;
 	pIf->GetNetstrmDrvrCAExtraFiles = GetNetstrmDrvrCAExtraFiles;
 	pIf->GetParserControlCharacterEscapePrefix = GetParserControlCharacterEscapePrefix;
 	pIf->GetParserDropTrailingLFOnReception = GetParserDropTrailingLFOnReception;
@@ -993,6 +1011,8 @@ static rsRetVal resetConfigVariables(uchar __attribute__((unused)) *pp, void __a
 	loadConf->globals.pszDfltNetstrmDrvrKeyFile = NULL;
 	free(loadConf->globals.pszDfltNetstrmDrvrCertFile);
 	loadConf->globals.pszDfltNetstrmDrvrCertFile = NULL;
+	free(loadConf->globals.pszDfltOpensslEngine);
+	loadConf->globals.pszDfltOpensslEngine = NULL;
 	free(LocalHostNameOverride);
 	LocalHostNameOverride = NULL;
 	free(loadConf->globals.oversizeMsgErrorFile);
@@ -1247,6 +1267,9 @@ glblDoneLoadCnf(void)
 		} else if(!strcmp(paramblk.descr[i].name, "defaultnetstreamdriver")) {
 			cstr = (uchar*) es_str2cstr(cnfparamvals[i].val.d.estr, NULL);
 			setDfltNetstrmDrvr(NULL, cstr);
+		} else if(!strcmp(paramblk.descr[i].name, "defaultopensslengine")) {
+			cstr = (uchar*) es_str2cstr(cnfparamvals[i].val.d.estr, NULL);
+			setDfltOpensslEngine(NULL, cstr);
 		} else if(!strcmp(paramblk.descr[i].name, "netstreamdrivercaextrafiles")) {
 			cstr = (uchar*) es_str2cstr(cnfparamvals[i].val.d.estr, NULL);
 			setNetstrmDrvrCAExtraFiles(NULL, cstr);
@@ -1447,7 +1470,7 @@ finalize_it:
 	 * hostname. These messages are currently in iminternal queue. Once they
 	 * are taken from that queue, the hostname will be adapted.
 	 */
-	queryLocalHostname();
+	queryLocalHostname(loadConf);
 	RETiRet;
 }
 
@@ -1470,6 +1493,8 @@ BEGINAbstractObjClassInit(glbl, 1, OBJ_IS_CORE_MODULE) /* class, version */
 	CHKiRet(regCfSysLineHdlr((uchar *)"dropmsgswithmaliciousdnsptrrecords", 0, eCmdHdlrBinary, SetDropMalPTRMsgs,
 	NULL, NULL));
 	CHKiRet(regCfSysLineHdlr((uchar *)"defaultnetstreamdriver", 0, eCmdHdlrGetWord, setDfltNetstrmDrvr, NULL,
+	NULL));
+	CHKiRet(regCfSysLineHdlr((uchar *)"defaultopensslengine", 0, eCmdHdlrGetWord, setDfltOpensslEngine, NULL,
 	NULL));
 	CHKiRet(regCfSysLineHdlr((uchar *)"defaultnetstreamdrivercafile", 0, eCmdHdlrGetWord,
 	setDfltNetstrmDrvrCAF, NULL, NULL));

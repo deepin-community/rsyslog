@@ -218,6 +218,14 @@ if ENABLE_OMAZUREEVENTHUBS
 SUBDIRS += plugins/omazureeventhubs
 endif
 
+if ENABLE_IMDTLS
+SUBDIRS += plugins/imdtls
+endif
+
+if ENABLE_OMDTLS
+SUBDIRS += plugins/omdtls
+endif
+
 if ENABLE_OMPROG
 SUBDIRS += plugins/omprog
 endif
@@ -356,7 +364,6 @@ DISTCHECK_CONFIGURE_FLAGS=
 # in a make distcheck is so that we detect code that accidently was not updated
 # when some global update happened.
 DISTCHECK_CONFIGURE_FLAGS+= \
-	--with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir) \
 	--enable-silent-rules \
 	--enable-rsyslogd \
 	--enable-omstdout \
@@ -538,6 +545,14 @@ endif
 
 if ENABLE_OMAZUREEVENTHUBS
 DISTCHECK_CONFIGURE_FLAGS+= --enable-omazureeventhubs
+endif
+
+if ENABLE_IMDTLS
+DISTCHECK_CONFIGURE_FLAGS+= --enable-imdtls
+endif
+
+if ENABLE_OMDTLS
+DISTCHECK_CONFIGURE_FLAGS+= --enable-omdtls
 endif
 
 if ENABLE_IMJOURNAL

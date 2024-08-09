@@ -24,18 +24,17 @@ Build-Depends: debhelper-compat (= 13),
                libsnmp-dev,
                uuid-dev,
                libsystemd-dev (>= 209) [linux-any],
-               pkg-config,
+               pkgconf,
                bison,
                flex,
                procps <!nocheck>,
                python3 <!nocheck>,
                libfaketime <!nocheck>,
-               systemd [linux-any] <!nocheck>,
                lsof [linux-any] <!nocheck>,
                logrotate <!nocheck>,
                iproute2 [linux-any] <!nocheck>,
                curl <!nocheck>,
-Standards-Version: 4.6.2
+Standards-Version: 4.7.0
 Rules-Requires-Root: no
 Vcs-Git: https://salsa.debian.org/debian/rsyslog.git
 Vcs-Browser: https://salsa.debian.org/debian/rsyslog

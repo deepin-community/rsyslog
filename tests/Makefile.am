@@ -209,7 +209,6 @@ TESTS +=  \
 	invalid_nested_include.sh \
 	omfwd-tls-invalid-permitExpiredCerts.sh \
 	omfwd-keepalive.sh \
-	omusrmsg-noabort-legacy.sh \
 	omusrmsg-errmsg-no-params.sh \
 	omusrmsg-noabort.sh \
 	omfile-module-params.sh \
@@ -527,6 +526,7 @@ TESTS +=  \
 endif # ENABLE_LIBGCRYPT
 if HAVE_VALGRIND
 TESTS +=  \
+	omusrmsg-noabort-vg.sh \
 	omfile_hup-vg.sh \
 	gzipwr_hup-vg.sh \
 	tcpflood_wrong_option_output.sh \
@@ -912,16 +912,19 @@ if ENABLE_OMHTTP
 TESTS +=  \
 	omhttp-auth.sh \
 	omhttp-basic.sh \
+	omhttp-basic-ignorecodes.sh \
 	omhttp-batch-fail-with-400.sh \
 	omhttp-batch-jsonarray-compress.sh \
 	omhttp-batch-jsonarray-retry.sh \
 	omhttp-batch-jsonarray.sh \
 	omhttp-batch-kafkarest-retry.sh \
 	omhttp-batch-kafkarest.sh \
+	omhttp-batch-retry-metadata.sh \
 	omhttp-batch-lokirest-retry.sh \
 	omhttp-batch-lokirest.sh \
 	omhttp-batch-newline.sh \
 	omhttp-retry.sh \
+	omhttp-retry-timeout.sh \
 	omhttp-httpheaderkey.sh \
 	omhttp-multiplehttpheaders.sh \
 	omhttp-dynrestpath.sh \
@@ -930,12 +933,15 @@ if HAVE_VALGRIND
 TESTS +=  \
 	omhttp-auth-vg.sh \
 	omhttp-basic-vg.sh \
+	omhttp-basic-ignorecodes-vg.sh \
 	omhttp-batch-jsonarray-compress-vg.sh \
 	omhttp-batch-jsonarray-retry-vg.sh \
 	omhttp-batch-jsonarray-vg.sh \
 	omhttp-batch-kafkarest-retry-vg.sh \
+	omhttp-batch-retry-metadata-vg.sh \
 	omhttp-batch-lokirest-retry-vg.sh \
 	omhttp-retry-vg.sh \
+	omhttp-retry-timeout-vg.sh \
 	omhttp-batch-lokirest-vg.sh
 endif
 endif
@@ -991,10 +997,13 @@ if ENABLE_OMAZUREEVENTHUBS
 if ENABLE_OMAZUREEVENTHUBS_TESTS
 TESTS += \
 	omazureeventhubs-basic.sh \
-	omazureeventhubs-list.sh
+	omazureeventhubs-list.sh \
+	omazureeventhubs-stress.sh \
+	omazureeventhubs-interrupt.sh
 if HAVE_VALGRIND
 TESTS += \
-	omazureeventhubs-stress.sh
+	omazureeventhubs-basic-vg.sh \
+	omazureeventhubs-interrupt-vg.sh
 endif
 endif
 endif
@@ -1417,6 +1426,7 @@ TESTS +=  \
 	sndrcv_tls_certvalid_expired.sh \
 	sndrcv_tls_certvalid_expired_defaultmode.sh \
 	sndrcv_tls_certvalid_revoked.sh \
+	sndrcv_tls_client_missing_cert.sh \
 	imtcp-tls-no-lstn-startup.sh \
 	imtcp-tls-gtls-x509fingerprint-invld.sh \
 	imtcp-tls-gtls-x509fingerprint.sh \
@@ -1465,6 +1475,7 @@ TESTS +=  \
 	imtcp-tls-ossl-error-cert.sh \
 	imtcp-tls-ossl-error-key.sh \
 	imtcp-tls-ossl-error-key2.sh
+#	imtcp-tls-ossl-basic-stress.sh
 if HAVE_VALGRIND
 TESTS += \
 	imtcp-tls-ossl-basic-vg.sh \
@@ -1533,6 +1544,33 @@ TESTS += \
 	 sndrcv_relp-vg-sender.sh
 endif # HAVE_VALGRIND
 endif
+
+if ENABLE_IMDTLS
+TESTS += \
+	imdtls-basic.sh \
+	imdtls-basic-tlscommands.sh \
+	imdtls-basic-timeout.sh \
+	imdtls-error-cert.sh \
+	imdtls-sessionbreak.sh
+if HAVE_VALGRIND
+TESTS += \
+	imdtls-basic-vg.sh \
+	imdtls-sessionbreak-vg.sh
+endif # HAVE_VALGRIND
+if ENABLE_OMDTLS
+TESTS += \
+	sndrcv_dtls_certvalid.sh \
+	sndrcv_dtls_anon_ciphers.sh \
+	sndrcv_dtls_certvalid_ciphers.sh \
+	sndrcv_dtls_certvalid_permitted.sh \
+	sndrcv_dtls_certvalid_missing.sh \
+	sndrcv_dtls_anon_ciphers.sh
+if HAVE_VALGRIND
+TESTS += \
+	sndrcv_dtls_certvalid-vg.sh
+endif # HAVE_VALGRIND
+endif # ENABLE_OMDTLS
+endif # ENABLE_IMDTLS
 
 if ENABLE_OMUDPSPOOF
 TESTS += \
@@ -2104,9 +2142,9 @@ EXTRA_DIST= \
 	zstd.sh \
 	zstd-vg.sh \
 	gzipwr_hup-vg.sh \
-	omusrmsg-noabort-legacy.sh \
 	omusrmsg-errmsg-no-params.sh \
 	omusrmsg-noabort.sh \
+	omusrmsg-noabort-vg.sh \
 	omfile-module-params.sh \
 	omfile-read-only-errmsg.sh \
 	omfile-null-filename.sh \
@@ -2389,6 +2427,7 @@ EXTRA_DIST= \
 	imtcp-tls-ossl-basic-tlscommands.sh \
 	imtcp-tls-ossl-basic-verifydepth.sh \
 	imtcp-tls-ossl-invalid-verifydepth.sh \
+	imtcp-tls-ossl-basic-stress.sh \
 	sndrcv_tls_ossl_anon_ipv4.sh \
 	sndrcv_tls_ossl_anon_ipv6.sh \
 	sndrcv_tls_ossl_anon_rebind.sh \
@@ -2525,6 +2564,20 @@ EXTRA_DIST= \
 	sndrcv_omudpspoof-bigmsg.sh \
 	sndrcv_omudpspoof_nonstdpt.sh \
 	sndrcv_gzip.sh \
+	imdtls-basic.sh \
+	imdtls-basic-tlscommands.sh \
+	imdtls-basic-timeout.sh \
+	imdtls-error-cert.sh \
+	imdtls-sessionbreak.sh \
+	imdtls-basic-vg.sh \
+	imdtls-sessionbreak-vg.sh \
+	sndrcv_dtls_certvalid.sh \
+	sndrcv_dtls_anon_ciphers.sh \
+	sndrcv_dtls_certvalid_ciphers.sh \
+	sndrcv_dtls_certvalid_permitted.sh \
+	sndrcv_dtls_certvalid_missing.sh \
+	sndrcv_dtls_anon_ciphers.sh \
+	sndrcv_dtls_certvalid-vg.sh \
 	action-tx-single-processing.sh \
 	omfwd-errfile-maxsize.sh \
 	omfwd-errfile-maxsize-filled.sh \
@@ -2563,6 +2616,7 @@ EXTRA_DIST= \
 	testsuites/htpasswd \
 	omhttp-auth.sh \
 	omhttp-basic.sh \
+	omhttp-basic-ignorecodes.sh \
 	omhttp-batch-fail-with-400.sh \
 	omhttp-batch-jsonarray-compress.sh \
 	omhttp-batch-jsonarray-retry.sh \
@@ -2573,6 +2627,11 @@ EXTRA_DIST= \
 	omhttp-batch-lokirest.sh \
 	omhttp-batch-lokirest-vg.sh \
 	omhttp-batch-newline.sh \
+	omhttp-batch-retry-metadata.sh \
+	omhttp-retry-timeout.sh \
+	omhttp-basic-ignorecodes-vg.sh \
+	omhttp-batch-retry-metadata-vg.sh \
+	omhttp-retry-timeout-vg.sh \
 	omhttp-retry.sh \
 	omhttp-httpheaderkey.sh \
 	omhttp-multiplehttpheaders.sh \
@@ -2587,6 +2646,7 @@ EXTRA_DIST= \
 	omhttp-batch-lokirest-retry-vg.sh \
 	omhttp-retry-vg.sh \
 	omhttp_server.py \
+	omhttp-validate-response.py \
 	omprog-defaults.sh \
 	omprog-defaults-vg.sh \
 	omprog-output-capture.sh \
@@ -2808,6 +2868,9 @@ EXTRA_DIST= \
 	omazureeventhubs-basic.sh \
 	omazureeventhubs-list.sh \
 	omazureeventhubs-stress.sh \
+	omazureeventhubs-interrupt.sh \
+	omazureeventhubs-basic-vg.sh \
+	omazureeventhubs-interrupt-vg.sh \
 	mmpstrucdata.sh \
 	mmpstrucdata-escaping.sh \
 	mmpstrucdata-case.sh \
@@ -2975,6 +3038,7 @@ EXTRA_DIST= \
 	sndrcv_tls_ossl_serveranon_gtls_clientanon.sh \
 	sndrcv_tls_gtls_servercert_ossl_clientanon.sh \
 	sndrcv_tls_gtls_serveranon_ossl_clientanon.sh \
+	sndrcv_tls_client_missing_cert.sh \
 	sndrcv_ossl_cert_chain.sh \
 	omtcl.sh \
 	omtcl.tcl \
