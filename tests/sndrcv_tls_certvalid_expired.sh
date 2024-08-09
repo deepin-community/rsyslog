@@ -14,7 +14,7 @@ global(
 	defaultNetstreamDriverKeyFile="'$srcdir/testsuites/x.509/client-key.pem'"
 	defaultNetstreamDriver="'$RS_TLS_DRIVER'"
 #	debug.whitelist="on"
-#	debug.files=["nsd_ossl.c", "tcpsrv.c", "nsdsel_ossl.c", "nsdpoll_ptcp.c", "dnscache.c"]
+#	debug.files=["net_ossl.c", "nsd_ossl.c", "tcpsrv.c", "nsdsel_ossl.c", "nsdpoll_ptcp.c", "dnscache.c"]
 )
 
 module(	load="../plugins/imtcp/.libs/imtcp"
@@ -58,6 +58,6 @@ wait_shutdown 2
 shutdown_when_empty
 wait_shutdown
 
-content_check "not permitted to talk to peer, certificate invalid: certificate expired"
+content_check --regex "not permitted to talk to peer '.*', certificate invalid: certificate expired"
 
 exit_test

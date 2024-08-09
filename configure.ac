@@ -2,9 +2,9 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([rsyslog],[8.2310.0],[rsyslog@lists.adiscon.com])   # UPDATE on release
-AC_DEFINE(VERSION_YEAR,  23, [year part of real rsyslog version])  # UPDATE on release
-AC_DEFINE(VERSION_MONTH, 10, [month part of real rsyslog version]) # UPDATE on release
+AC_INIT([rsyslog],[8.2406.0],[rsyslog@lists.adiscon.com])   # UPDATE on release
+AC_DEFINE(VERSION_YEAR,  24, [year part of real rsyslog version])  # UPDATE on release
+AC_DEFINE(VERSION_MONTH,  6, [month part of real rsyslog version]) # UPDATE on release
 
 AM_INIT_AUTOMAKE([subdir-objects])
 
@@ -727,16 +727,6 @@ AC_ARG_ENABLE(unlimited_select,
 if test "$enable_unlimited_select" = "yes"; then
         AC_DEFINE(USE_UNLIMITED_SELECT, 1, [If defined, the select() syscall won't be limited to a particular number of file descriptors.])
 fi
-
-
-# support for systemd unit files
-AC_ARG_WITH([systemdsystemunitdir],
-        AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
-        [], [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
-if test "x$with_systemdsystemunitdir" != xno; then
-        AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
-fi
-AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" -a "x$with_systemdsystemunitdir" != xno ])
 
 
 # debug
@@ -2508,6 +2498,41 @@ AM_CONDITIONAL(ENABLE_OMMONGODB, test x$enable_ommongodb = xyes)
 # end of mongodb code
 
 
+# BEGIN IMDTLS INPUT SUPPORT
+AC_ARG_ENABLE(imdtls,
+        [AS_HELP_STRING([--enable-imdtls],[Compiles DTLS syslog input module @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_imdtls="yes" ;;
+          no) enable_imdtls="no" ;;
+         optional) enable_imdtls="optional" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-imdtls) ;;
+         esac],
+        [enable_imdtls=no]
+)
+if test "x$enable_imdtls" = "xyes"; then
+        PKG_CHECK_MODULES(OPENSSL, openssl >= 1.1.0)
+fi
+AM_CONDITIONAL(ENABLE_IMDTLS, test x$enable_imdtls = xyes)
+# END IMDTLS INPUT
+
+# BEGIN OMDTLS INPUT SUPPORT
+AC_ARG_ENABLE(omdtls,
+        [AS_HELP_STRING([--enable-omdtls],[Compiles DTLS syslog output module @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_omdtls="yes" ;;
+          no) enable_omdtls="no" ;;
+         optional) enable_omdtls="optional" ;;
+           *) AC_MSG_ERROR(bad value ${enableval} for --enable-omdtls) ;;
+         esac],
+        [enable_omdtls=no]
+)
+if test "x$enable_omdtls" = "xyes"; then
+	PKG_CHECK_MODULES(OPENSSL, openssl >= 1.0.2)
+fi
+AM_CONDITIONAL(ENABLE_OMDTLS, test x$enable_omdtls = xyes)
+# END OMDTLS INPUT
+
+
 # BEGIN CZMQ INPUT SUPPORT
 AC_ARG_ENABLE(imczmq,
         [AS_HELP_STRING([--enable-imczmq],[Compiles imczmq output module @<:@default=no@:>@])],
@@ -2522,7 +2547,6 @@ if test "x$enable_imczmq" = "xyes"; then
 	PKG_CHECK_MODULES(CZMQ, libczmq >= 4.0.0)
 fi
 AM_CONDITIONAL(ENABLE_IMCZMQ, test x$enable_imczmq = xyes)
-
 # END CZMQ INPUT
 
 
@@ -2880,6 +2904,8 @@ AC_CONFIG_FILES([Makefile \
 		plugins/pmlastmsg/Makefile \
 		plugins/mmdblookup/Makefile \
 		plugins/omazureeventhubs/Makefile \
+		plugins/imdtls/Makefile \
+		plugins/omdtls/Makefile \
 		contrib/mmdarwin/Makefile \
 		contrib/omhttp/Makefile \
 		contrib/fmhash/Makefile \
@@ -2946,6 +2972,7 @@ echo "    Klog functionality enabled:               $enable_klog ($os_type)"
 fi
 echo "    /dev/kmsg functionality enabled:          $enable_kmsg"
 echo "    plain tcp input module enabled:           $enable_imptcp"
+echo "    DTLS udp input module enabled:            $enable_imdtls"
 echo "    imdiag enabled:                           $enable_imdiag"
 echo "    file input module enabled:                $enable_imfile"
 echo "    docker log input module enabled:          $enable_imdocker"
@@ -2988,6 +3015,7 @@ echo "    omtcl module will be compiled:            $enable_omtcl"
 echo "    omkafka module will be compiled:          $enable_omkafka"
 echo "    omhiredis module will be compiled:        $enable_omhiredis"
 echo "    omazureeventhubs module will be compiled: $enable_omazureeventhubs"
+echo "    omdtls module will be compiled:           $enable_omdtls"
 echo
 echo "---{ parser modules }---"
 echo "    pmlastmsg module will be compiled:        $enable_pmlastmsg"

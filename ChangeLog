@@ -1,4 +1,263 @@
 ----------------------------------------------------------------------------------------
+Scheduled Release 8.2406.0 (aka 2024.06) 2024-07-02
+- 2024-07-01: ompgsql bugfix: unexpected and unnecessary message loss
+  In case of PG not available lets retry instead of dropping messages
+  Thanks to Nickolai Novik for the patch.
+- 2024-07-01: tls subsystem/ossl driver
+  Several small fixes/additions
+  * output all loaded ciphers and engines into debug log
+  * Add new global option "defaultopensslengine" to customize the default openssl
+    engine. If not defined, openssl will handle the default engine automatically.
+    Sample: global(defaultopensslengine="rdrand")
+  * Add simple openssl performance test (imtcp-tls-ossl-basic-stress.sh) with
+    defaultopensslengine set to rdrand (Intel).
+  * removed unneeded testcase files in runtime folder.
+- 2024-04-18: [o|i]mprog/mmexternal bugfix: invalid command line parameter passing
+  Quoted command line parameters were incorrectly passed to the called program. This
+  resulted in unexpected behaviour. For example, in
+  bash -c "echo test"
+  bash got passed parameters '-c" and '"echo test"'. Note the double quotes in
+  '"echo test"'. These needed to be removed by Unix/Linux standards but were instead
+  passed to bash. That in turn resulted in invalid execution. With the fix, the
+  behaviour is now correct. Now, bash gets passed '-c' and 'echo test'.
+  This actually is a BREAKING CHANGE. However, it was outright wrong behaviour from
+  the beginning. We assume that people either never noticed it (because they did not
+  use quoted parameters) or used some workaroud, likely a "starter script", which
+  performed the right task. As such, we do expect that only a very limited set of
+  installations might be affected by the change.
+  Even more important, we would need to change the default behaviour in any case,
+  because the previous handling was obviosuly unacceptable. As such, there was no
+  way to keep rsyslog perform the previous action.
+  Thanks to Paul Fertser for the patch.
+- 2024-04-12: bugfixes related to time_t on 32 bit platforms (y38k isue)
+  Thanks to Michael Biebl for the patch.
+----------------------------------------------------------------------------------------
+Scheduled Release 8.2404.0 (aka 2024.04) 2024-04-02
+- 2024-04-02: omhttp patches and enhancement
+  New omhttp plugin configuration parameters added:
+  * restpathtimeout - configures a timeout value for an omhttp restpath, and retry again
+  * httpretrycodes (list) - configurable list of HTTP status codes that should be
+    retried by omhttp plugin. The default behavior is to retry any non 2xx status code.
+  * httpignorablecodes (list) that can specify HTTP status codes that should be ignored
+    (as failures). status codes specified as ignorable code will not be retried.
+  * proxyhost, proxyport - configures a proxy, for which omhttp can use to set up a 
+    HTTP proxy tunnel connection. Also works by reading environment variable if
+    configured HTTP_PROXY. For more details see libcurl docs on CURLOPT_PROXY
+    thanks to @erenwh for the contribution!
+  * retry.addmetadata - when this option is enabled, omhttp will add the
+    response metadata to: $!omhttp!response. There are 3 response metadata added:
+    code, body, batch_index.
+  More statistics omhttp curl statistic counters:
+  * requests.count
+  * requests.status.0xx
+  * requests.status.1xx
+  * requests.status.2xx
+  * requests.status.3xx
+  * requests.status.4xx
+  * requests.status.5xx
+  * requests.bytes
+  * requests.time_ms
+  No longer discard 3xx, 4xx errors
+  see also https://github.com/rsyslog/rsyslog/issues/4636
+  Thanks to github user n2yen for the patches.
+- 2024-04-02: remove CAP_IPC_LOCK capability
+  Does not seem to be necessary.
+  Thanks to Michael Biebl for the patch.
+- 2024-03-28: TLS bugfix: TLS drivers did not properly load under some conditions
+  This was a regeression from the DTLS implementation
+- 2024-03-28: mmdblookup bugfix: do not suspend on incompatible IP lookup
+  Mmdblookup module used to suspend after erroring on an IPv6 IP lookup on IPv4-only
+  DBs. The suspension of the module is now replaced by a simple log message,
+  allowing it to keep working for future lookups.
+  Thanks to Théo Bertin (frikilax) for the patch.
+- 2024-03-28: tarball fix: dist tarball was missing a textbench file
+  This made the testbench fail.
+----------------------------------------------------------------------------------------
+Scheduled Release 8.2402.0 (aka 2024.02) 2024-02-27
+- 2024-02-26: add DTLS support
+  This version comes with the initial implementation of imdtls and omdtls.
+  These modules permit secure message exchange over UDP.
+- 2024-02-26: testbench: make omusrmsg-noabort test more reliable
+  The previous test did not always detect an abort of rsyslog/omusrmsg.
+  The detection method has now been improved, so it is far more
+  probable that an abort is detected.
+  While doing this, we noticed that the omusrmsg-noabort-legacy test was
+  now a 100% duplicate. There is no need any longer to check pure legacy
+  syntax, and so that test has been removed.
+  We also added a valgrind-based test ofr omusrmsg-noabort, which furthers
+  strengthens bug detection. Most importantly, it helps us to detect
+  potentially new memory leaks on all CI platforms (in case the lib
+  behaves differently depending on os/distro).
+  see also https://github.com/rsyslog/rsyslog/issues/5294
+- 2024-02-26: omusrmsg bugfix: potential double free, which can cause segfault
+  omusrmsg frees a string which points to OS/system library memory. When
+  the os/libs clean up, it frees the memory as well. This results in a
+  double free. This bug interestingly seems to go unnoticed in many cases.
+  But it can cause a segfault or hard-to-trace memory corruptions which
+  could lead to other problems later on. The outcome of this bug most
+  probably depdns on os/library versions.
+  closes https://github.com/rsyslog/rsyslog/issues/5294
+- 2024-02-26: ommysql bugfix: potential segfault on database error
+  Due to an invalid code path, ommysql may cause a segfault if database
+  transactions fail into a specific way. The main trigger is a totally
+  irrecoverrable database error which can lead to premature connection
+  close, which is not checked for in all recover code.
+  This was detected in a setting where a stored procedure is called that
+  rolls back a transaction in itself.
+  This patch fixes the issue.
+  closes https://github.com/rsyslog/rsyslog/issues/5288
+- 2024-02-26: omfile: do not carry out actual action when writing to /dev/null
+  In some use cases omfile is configured to write to /dev/null. This seems
+  primarily be done because of statistics gathering but maybe some other
+  scenarios. We now add conditional logic to not do any actual omfile
+  action when the target file is /dev/null.
+  Note: this check only works on static file names. When /dev/null is
+  evaluated as part of dynafile, it will be handled just in the regular
+  case like before this patch.
+----------------------------------------------------------------------------------------
+Scheduled Release 8.2312.0 (aka 2023.12) 2023-12-12
+- 2023-12-11: imjournal: Add new input module parameter 'defaulttag'
+  The DefaultTag option specifies the default value for the tag field.
+  In imjournal, this can happen when one of the following is missing:
+   * identifier string provided by the application (SYSLOG_IDENTIFIER)
+   * name of the process the journal entry originates from (_COMM)
+  Thanks to Attila Lakatos for the patch.
+- 2023-12-08: core bugfix: rsyslog messages may not always have FQDN
+  Even if hostname FQDN is configured, rsyslog internal messages generated
+  after rsyslog startup and before the first HUP will not necessarily have
+  FQDN but instead only the shortname of the local host. This commit
+  fixes the situation.
+  Special thanks to github user eciii for doing a great bug analysis
+  and helping us considerably to fix the issue.
+  closes https://github.com/rsyslog/rsyslog/issues/5218
+- 2023-12-08: omlibdbi regression fix: database path was not properly used
+  Commit 4a072d6c93015a63716c49a6c7756df22750086a caused a regression that made
+  the database path unreliable to use. Depending on platform/libc version the
+  basename was improperly extracted, which made access to the database of sqllite
+  impossible.
+  Thanks to Flávio Tapajós for the patch.
+  closes: https://github.com/rsyslog/rsyslog/issues/5282
+- 2023-12-06: mazureeventhubs: Corrected handling of transport closed failures
+  - Added test for connection interrupts (requires root)
+  - Corrected handling of PN_TRANSPORT_CLOSED.
+  - Make sure Connection is being reestablished trough tryResume
+  - Enhanced Debug log output
+  closes: https://github.com/rsyslog/rsyslog/issues/5269
+- 2023-11-24: imkmsg: add params "readMode" and "expectedBootCompleteSeconds"
+  These parameters permit to control when imkmsg reads the full
+  kernel log upon startup.
+  Parameter "readMode" provides the following options:
+    * full-boot - (default) read full klog, but only "immediately" after
+      boot. "Immediately" is hereby meant in seconds of system
+      uptime given in "expectedBootCompleteSeconds"
+    * full-always - read full klog on every rsyslog startup. Most
+      probably causes messag duplication
+    * new-only - never emit existing kernel log message, read only
+      new ones.
+  Note that some message loss can happen if rsyslog is stopped
+  in "full-boot" and "new-only" read mode. The longer rsyslog is
+  inactive, the higher the message loss probability and potential
+  number of messages lost. For typical restart scenarios, this
+  should be minimal. On HUP, no message loss occurs as rsyslog
+  is not actually stopped.
+  The default value for "expectedBootCompleteSeconds" is 90.
+  see also https://github.com/rsyslog/rsyslog/issues/5161
+- 2023-11-10: imkmsg: add module param parseKernelTimestamp
+  The parameter permits to select whether or not and when kernel
+  timestamps shall parsed, that is be used as the actual time a
+  log message occurs.
+  This permits to work around problems with the way kernel
+  timestamps are represented. The reasoning is given in a sysklogd
+  commit by Joachim Wiberg, which we reproduce below ("QUOTE") to
+  have a stable reference.
+  The commit itself can be found for example at:
+  https://github.com/troglobit/sysklogd/commit/9f6fbb3301e571d8af95f8d771469291384e9e95
+  The new parameter parseKernelTimestamp has three possible modes:
+  "startup" - uses the kernel time stamp during the initial read
+  loop of /dev/kmsg, but replaced it later ignores it for later reads.
+  This is the DEFAULT setting.
+  "on" - kernel timestamps are always used and no correction is tried
+  "off" - kernel timestamps are never used, system time is used instead
+  Note that there this is a slightly breaking change. Previously, imkmsg
+  reported similar to "off" mode, now it reports by default in "startup"
+  mode. We consider this acceptable, as "off" mode timestamps are not
+  correct for startup. After startup, the behaviour is correct. All in
+  all, the new default is kind of a bugfix.
+  ============== QUOTE ===============
+  The spec[1] says the /dev/kmsg timestamp is a monotonic clock and in
+  microseconds.  After a while you realize it's also relative to the boot
+  of the system, that fact was probably too obvious to be put in the spec.
+  However, what's *not* in the spec, and what takes a while to realize, is
+  that this monotonic time is *not* adjusted for suspend/resume cycles ...
+  On a frequently used laptop this can manifest itself as follows.  The
+  kernel is stuck on Nov 15, and for the life of me I cannot find any to
+  adjust for this offset:
+      $ dmesg -T |tail -1; date
+      [Mon Nov 15 01:42:08 2021] wlan0: Limiting TX power to 23 (23 - 0) dBm as advertised by 18:e8:29:55:b0:62
+      Tue 23 Nov 2021 05:20:53 PM CET
+  Hence this patch.  After initial "emptying" of /dev/kmsg when syslogd
+  starts up, we raise a flag (denoting done with backlog), and after this
+  point we ignore the kernel's idea of time and replace it with the actual
+  time we have now, the same that userspace messages are logged with.
+  Sure, there will be occasions where there's a LOT of kernel messages to
+  read and we won't be able to keep track.  Yet, this patch is better than
+  the current state (where we log Nov 15).
+  [1]: https://www.kernel.org/doc/Documentation/ABI/testing/dev-kmsg
+  ===========END QUOTE ===============
+  closes https://github.com/rsyslog/rsyslog/issues/4561
+  closes https://github.com/rsyslog/rsyslog/issues/5161
+- 2023-11-07: imfile bugfix: remove state file on file delete
+  The state file would remain in the working directory
+  after shutdown, even though deleteStateOnfileDelete is
+  set to "on" and the monitored file was removed.
+  closes https://github.com/rsyslog/rsyslog/issues/5258
+  Thanks to Attila Lakatos for the patch.
+- 2023-10-31: TLS subsystem: fix small memory leak on startup
+  This was a one-time leak of the file name that hapened if a certificate file
+  was not accessible. It had no operational issues, but could confuse automatted
+  testing. As not only a side-effect, certificate load failures are now somewhat
+  more verbosely reported, which we consider helpful to the user.
+  Thanks to Attila Lakatos for the patch.
+- 2023-10-31: imklog bugfix: keepKernelTimestamp=off config param did not work
+   ... at least not as expected. It was only honored for kernel-level
+   messages and only when parseKernelTimestamp was "on". Otherwise, the
+   kernel timestamp was always kept inside the message.
+   closes https://github.com/rsyslog/rsyslog/issues/5160
+- 2023-10-26: TLS subsystem: add remote hostname to error reporting
+  This provides richer and easier to process logs for error and warning
+  cases. One goal is to enable automatic operations without the need
+  to consolidate multiple message to a single information.
+  This improves one situation in gtls driver and provides a more
+  generic approach in ossl driver for OpenSSL error reporting.
+  There is probably still room for improvement, however this patch
+  is at least a good starting point for further work. Please
+  provide feedback if you need more!
+  closes https://github.com/rsyslog/rsyslog/issues/5244
+- 2023-10-24: imjournal: add the ability to run multiple journal inputs
+  This may be useful to de-couple journal processing.
+  Thanks to Willy Tu for the patch.
+- 2023-10-24: regression fix: forking rsyslogd on BSD did not work
+  Actually, this was an issue for all platforms that do not provide open file handle
+  detection via the /proc file system.
+  Tech details: After fork if the child process uses close_range to close open file
+  descriptors it has no way to exempt the parentPipeFD causing a failure to signal
+  successful startup to the parent process. This causes failures on all systems that
+  aren't Linux that implement close_range.
+  Thanks to Nathan Huff for the patch.
+- 2023-10-24: omusrmsg: use logind instead of utmp for wall messages with systemd
+  Future SUSE versions will get rid of utmp due to a 32bit time_t counter
+  overflow in 2038.
+  See details at:
+  https://github.com/thkukuk/utmpx/blob/main/Y2038.md
+  On systemd based systems logind is an alternative to utmp.
+  Thanks to github user tblume for the patch.
+- 2023-10-24: cleanup: rm no longer used --with-systemdsystemunitdir configure switch
+  This is a clean up following the removal of the service unit in
+  cfd07503ba055100a84d75d1a78a5c6cceb9fdab
+- 2023-10-23: testbench: bump zookeeper version to match current offering
+  Older version can no longer be downloaded. It also makes sense to
+  test with mainstream version.
+----------------------------------------------------------------------------------------
 Scheduled Release 8.2310.0 (aka 2023.10) 2023-10-10
 - 2023-10-04: Add CAP_NET_RAW capability due to the omudpspoof module
   The CAP_NET_RAW ensures the use of RAW and PACKET sockets,

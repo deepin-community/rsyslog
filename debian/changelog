@@ -1,3 +1,81 @@
+rsyslog (8.2406.0-1) unstable; urgency=medium
+
+  * New upstream version 8.2406.0
+  * Bump Standards-Version to 4.7.0
+  * Rebase patches
+
+ -- Michael Biebl <biebl@debian.org>  Wed, 03 Jul 2024 16:44:09 +0200
+
+rsyslog (8.2404.0-2) unstable; urgency=medium
+
+  * Fix time_t related issues.
+    Timestamps can be 64bit, even on 32bit architectures.
+    See https://wiki.debian.org/ReleaseGoals/64bit-time
+
+ -- Michael Biebl <biebl@debian.org>  Wed, 10 Apr 2024 19:38:43 +0200
+
+rsyslog (8.2404.0-1) unstable; urgency=medium
+
+  * New upstream version 8.2404.0
+
+ -- Michael Biebl <biebl@debian.org>  Tue, 02 Apr 2024 21:15:22 +0200
+
+rsyslog (8.2402.0-1) unstable; urgency=medium
+
+  * New upstream version 8.2402.0
+    - Fixes "rsyslog-mysql: Data too long for column 'FromHost'"
+      (Closes: #1060868)
+  * Rebase patches
+  * Build-depend on pkgconf rather than pkg-config
+
+ -- Michael Biebl <biebl@debian.org>  Tue, 27 Feb 2024 17:48:36 +0100
+
+rsyslog (8.2312.0-3) unstable; urgency=medium
+
+  * Drop unused systemd Build-Depends.
+    Unfortunately, we can't run the journal related tests during build as
+    there typically is no journald available in the build environment. So
+    the systemd Build-Depends is not actually needed.
+
+ -- Michael Biebl <biebl@debian.org>  Thu, 11 Jan 2024 22:07:44 +0100
+
+rsyslog (8.2312.0-2) unstable; urgency=medium
+
+  * Add CAP_DAC_OVERRIDE to CapabilityBoundingSet in rsyslog.service.
+    It avoids problems when writing to log files by 3rd party programs that
+    are spawned via omprog. It also makes fileOwner/fileGroup work with
+    omfile. (Closes: #1059768)
+
+ -- Michael Biebl <biebl@debian.org>  Mon, 01 Jan 2024 11:20:43 +0100
+
+rsyslog (8.2312.0-1) unstable; urgency=medium
+
+  * New upstream version 8.2312.0
+
+ -- Michael Biebl <biebl@debian.org>  Tue, 12 Dec 2023 17:39:09 +0100
+
+rsyslog (8.2310.0-4) unstable; urgency=medium
+
+  * Drop BindPaths=-/dev/xconsole from rsyslog.service.
+    This needs to be removed after the switch to /run/xconsole.
+    (Closes: #1056066)
+
+ -- Michael Biebl <biebl@debian.org>  Mon, 27 Nov 2023 18:12:06 +0100
+
+rsyslog (8.2310.0-3) unstable; urgency=medium
+
+  * Drop unused --with-systemdsystemunitdir configure switch.
+    It's not actually used since we install debian/rsyslog.service via
+    dh_installsystemd.
+  * Recommend /run/xconsole for message forwarding to xconsole.
+    The recent sandboxing of rsyslog broke message forwarding to
+    /dev/xconsole. It is recommended to use /run/xconsole instead and
+    replace /dev/xconsole with a symlink pointing at /run/xconsole.
+    Update the example files and add a corresponding NEWS entry.
+    (Closes: #1056066)
+
+ -- Michael Biebl <biebl@debian.org>  Mon, 27 Nov 2023 08:23:12 +0100
+
 rsyslog (8.2310.0-2) unstable; urgency=medium
 
   [ Richard Lewis ]

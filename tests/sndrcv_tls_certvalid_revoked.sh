@@ -15,7 +15,7 @@ global(
 	defaultNetstreamDriverKeyFile="'$srcdir/testsuites/x.509/client-key.pem'"
 	defaultNetstreamDriver="'$RS_TLS_DRIVER'"
 #	debug.whitelist="on"
-#	debug.files=["nsd_ossl.c", "tcpsrv.c", "nsdsel_ossl.c", "nsdpoll_ptcp.c", "dnscache.c"]
+#	debug.files=["net_ossl.c", "nsd_ossl.c", "tcpsrv.c", "nsdsel_ossl.c", "nsdpoll_ptcp.c", "dnscache.c"]
 )
 
 module(	load="../plugins/imtcp/.libs/imtcp"
@@ -59,6 +59,9 @@ wait_shutdown 2
 shutdown_when_empty
 wait_shutdown
 
-content_check "not permitted to talk to peer, certificate invalid: certificate revoked"
+if [ -z "$TEXT_TO_CHECK" ]; then
+	TEXT_TO_CHECK="not permitted to talk to peer '.*', certificate invalid: certificate revoked"
+fi
+content_check --regex "$TEXT_TO_CHECK"
 
 exit_test

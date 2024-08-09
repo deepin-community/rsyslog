@@ -1,3 +1,17 @@
+rsyslog (8.2310.0-3) unstable; urgency=medium
+
+  The sandboxing features enabled in 8.2310.0-1, specifically
+  PrivateDevices=yes, broke the forwarding of messages to /dev/xconsole.
+  It is thus recommended to move the named pipe to /run/ and make
+  /dev/xconsole a symlink pointing at /run/xconsole.
+  The example files /usr/share/doc/rsyslog/examples/tmpfiles.d/xconsole.conf
+  and /usr/share/doc/rsyslog/examples/rsyslog.d/xconsole.conf haven been
+  updated to reflect this new setup.
+  If you have forwarding to xconsole enabled, please update your local
+  configuration in /etc/rsyslog.d and /etc/tmpfiles.d accordingly.
+
+ -- Michael Biebl <biebl@debian.org>  Mon, 27 Nov 2023 08:01:34 +0100
+
 rsyslog (8.2310.0-1) unstable; urgency=medium
 
   Enable various systemd sandboxing and security hardening features in

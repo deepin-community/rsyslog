@@ -15,6 +15,7 @@
 @SET_MAKE@
 
 
+
 VPATH = @srcdir@
 am__is_gnu_make = { \
   if test -z '$(MAKELEVEL)'; then \
@@ -114,8 +115,9 @@ sbin_PROGRAMS =
 @ENABLE_INET_TRUE@@ENABLE_LIBLOGGING_STDLOG_TRUE@am__append_14 = $(LIBLOGGING_STDLOG_LIBS)
 
 #
-# openssl netstream driver
+# openssl base and netstream driver
 #
+# noinst_LTLIBRARIES += lmnsd_ossl.la
 @ENABLE_OPENSSL_TRUE@am__append_15 = lmnsd_ossl.la
 
 #
@@ -164,6 +166,7 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(pkglibdir)"
 PROGRAMS = $(sbin_PROGRAMS)
+LIBRARIES = $(noinst_LIBRARIES)
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -282,9 +285,10 @@ lmnsd_gtls_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 @ENABLE_GNUTLS_TRUE@am_lmnsd_gtls_la_rpath = -rpath $(pkglibdir)
 @ENABLE_OPENSSL_TRUE@lmnsd_ossl_la_DEPENDENCIES =  \
 @ENABLE_OPENSSL_TRUE@	$(am__DEPENDENCIES_1)
-am__lmnsd_ossl_la_SOURCES_DIST = nsd_ossl.c nsd_ossl.h nsdsel_ossl.c \
-	nsdsel_ossl.h
+am__lmnsd_ossl_la_SOURCES_DIST = net_ossl.c net_ossl.h nsd_ossl.c \
+	nsd_ossl.h nsdsel_ossl.c nsdsel_ossl.h
 @ENABLE_OPENSSL_TRUE@am_lmnsd_ossl_la_OBJECTS =  \
+@ENABLE_OPENSSL_TRUE@	lmnsd_ossl_la-net_ossl.lo \
 @ENABLE_OPENSSL_TRUE@	lmnsd_ossl_la-nsd_ossl.lo \
 @ENABLE_OPENSSL_TRUE@	lmnsd_ossl_la-nsdsel_ossl.lo
 lmnsd_ossl_la_OBJECTS = $(am_lmnsd_ossl_la_OBJECTS)
@@ -419,6 +423,7 @@ am__depfiles_remade = ../$(DEPDIR)/librsyslog_la-action.Plo \
 	./$(DEPDIR)/lmnetstrms_la-nssel.Plo \
 	./$(DEPDIR)/lmnsd_gtls_la-nsd_gtls.Plo \
 	./$(DEPDIR)/lmnsd_gtls_la-nsdsel_gtls.Plo \
+	./$(DEPDIR)/lmnsd_ossl_la-net_ossl.Plo \
 	./$(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Plo \
 	./$(DEPDIR)/lmnsd_ossl_la-nsdsel_ossl.Plo \
 	./$(DEPDIR)/lmnsd_ptcp_la-nsd_ptcp.Plo \
@@ -738,12 +743,12 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
 sysconfdir = @sysconfdir@
-systemdsystemunitdir = @systemdsystemunitdir@
 target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 man_MANS = 
+noinst_LIBRARIES = 
 noinst_LTLIBRARIES = librsyslog.la $(am__append_17)
 
 #
@@ -921,7 +926,7 @@ lmnet_la_LIBADD =
 @ENABLE_INET_TRUE@lmnsd_ptcp_la_LDFLAGS = -module -avoid-version \
 @ENABLE_INET_TRUE@	$(am__append_14)
 @ENABLE_INET_TRUE@lmnsd_ptcp_la_LIBADD = 
-@ENABLE_OPENSSL_TRUE@lmnsd_ossl_la_SOURCES = nsd_ossl.c nsd_ossl.h nsdsel_ossl.c  nsdsel_ossl.h
+@ENABLE_OPENSSL_TRUE@lmnsd_ossl_la_SOURCES = net_ossl.c net_ossl.h nsd_ossl.c nsd_ossl.h nsdsel_ossl.c  nsdsel_ossl.h
 @ENABLE_OPENSSL_TRUE@lmnsd_ossl_la_CPPFLAGS = $(PTHREADS_CFLAGS) $(RSRT_CFLAGS) $(OPENSSL_CFLAGS)
 @ENABLE_OPENSSL_TRUE@lmnsd_ossl_la_LDFLAGS = -module -avoid-version
 @ENABLE_OPENSSL_TRUE@lmnsd_ossl_la_LIBADD = $(OPENSSL_LIBS)
@@ -1057,6 +1062,9 @@ clean-sbinPROGRAMS:
 	list=`for p in $$list; do echo "$$p"; done | sed 's/$(EXEEXT)$$//'`; \
 	echo " rm -f" $$list; \
 	rm -f $$list
+
+clean-noinstLIBRARIES:
+	-test -z "$(noinst_LIBRARIES)" || rm -f $(noinst_LIBRARIES)
 
 clean-noinstLTLIBRARIES:
 	-test -z "$(noinst_LTLIBRARIES)" || rm -f $(noinst_LTLIBRARIES)
@@ -1225,6 +1233,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnetstrms_la-nssel.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnsd_gtls_la-nsd_gtls.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnsd_gtls_la-nsdsel_gtls.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnsd_ossl_la-net_ossl.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnsd_ossl_la-nsdsel_ossl.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lmnsd_ptcp_la-nsd_ptcp.Plo@am__quote@ # am--include-marker
@@ -1634,6 +1643,13 @@ lmnsd_gtls_la-nsdsel_gtls.lo: nsdsel_gtls.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmnsd_gtls_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o lmnsd_gtls_la-nsdsel_gtls.lo `test -f 'nsdsel_gtls.c' || echo '$(srcdir)/'`nsdsel_gtls.c
 
+lmnsd_ossl_la-net_ossl.lo: net_ossl.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmnsd_ossl_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT lmnsd_ossl_la-net_ossl.lo -MD -MP -MF $(DEPDIR)/lmnsd_ossl_la-net_ossl.Tpo -c -o lmnsd_ossl_la-net_ossl.lo `test -f 'net_ossl.c' || echo '$(srcdir)/'`net_ossl.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/lmnsd_ossl_la-net_ossl.Tpo $(DEPDIR)/lmnsd_ossl_la-net_ossl.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='net_ossl.c' object='lmnsd_ossl_la-net_ossl.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmnsd_ossl_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o lmnsd_ossl_la-net_ossl.lo `test -f 'net_ossl.c' || echo '$(srcdir)/'`net_ossl.c
+
 lmnsd_ossl_la-nsd_ossl.lo: nsd_ossl.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lmnsd_ossl_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT lmnsd_ossl_la-nsd_ossl.lo -MD -MP -MF $(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Tpo -c -o lmnsd_ossl_la-nsd_ossl.lo `test -f 'nsd_ossl.c' || echo '$(srcdir)/'`nsd_ossl.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Tpo $(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Plo
@@ -1826,7 +1842,7 @@ distdir-am: $(DISTFILES)
 	done
 check-am: all-am
 check: check-am
-all-am: Makefile $(PROGRAMS) $(LTLIBRARIES)
+all-am: Makefile $(PROGRAMS) $(LIBRARIES) $(LTLIBRARIES)
 installdirs:
 	for dir in "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(pkglibdir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
@@ -1865,8 +1881,9 @@ maintainer-clean-generic:
 	@echo "it deletes files that may require special tools to rebuild."
 clean: clean-am
 
-clean-am: clean-generic clean-libtool clean-noinstLTLIBRARIES \
-	clean-pkglibLTLIBRARIES clean-sbinPROGRAMS mostlyclean-am
+clean-am: clean-generic clean-libtool clean-noinstLIBRARIES \
+	clean-noinstLTLIBRARIES clean-pkglibLTLIBRARIES \
+	clean-sbinPROGRAMS mostlyclean-am
 
 distclean: distclean-am
 		-rm -f ../$(DEPDIR)/librsyslog_la-action.Plo
@@ -1921,6 +1938,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/lmnetstrms_la-nssel.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_gtls_la-nsd_gtls.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_gtls_la-nsdsel_gtls.Plo
+	-rm -f ./$(DEPDIR)/lmnsd_ossl_la-net_ossl.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_ossl_la-nsdsel_ossl.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_ptcp_la-nsd_ptcp.Plo
@@ -2032,6 +2050,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/lmnetstrms_la-nssel.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_gtls_la-nsd_gtls.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_gtls_la-nsdsel_gtls.Plo
+	-rm -f ./$(DEPDIR)/lmnsd_ossl_la-net_ossl.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_ossl_la-nsd_ossl.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_ossl_la-nsdsel_ossl.Plo
 	-rm -f ./$(DEPDIR)/lmnsd_ptcp_la-nsd_ptcp.Plo
@@ -2067,17 +2086,17 @@ uninstall-am: uninstall-pkglibLTLIBRARIES uninstall-sbinPROGRAMS
 .MAKE: install-am install-strip
 
 .PHONY: CTAGS GTAGS TAGS all all-am am--depfiles check check-am clean \
-	clean-generic clean-libtool clean-noinstLTLIBRARIES \
-	clean-pkglibLTLIBRARIES clean-sbinPROGRAMS cscopelist-am ctags \
-	ctags-am distclean distclean-compile distclean-generic \
-	distclean-libtool distclean-tags distdir dvi dvi-am html \
-	html-am info info-am install install-am install-data \
-	install-data-am install-dvi install-dvi-am install-exec \
-	install-exec-am install-html install-html-am install-info \
-	install-info-am install-man install-pdf install-pdf-am \
-	install-pkglibLTLIBRARIES install-ps install-ps-am \
-	install-sbinPROGRAMS install-strip installcheck \
-	installcheck-am installdirs maintainer-clean \
+	clean-generic clean-libtool clean-noinstLIBRARIES \
+	clean-noinstLTLIBRARIES clean-pkglibLTLIBRARIES \
+	clean-sbinPROGRAMS cscopelist-am ctags ctags-am distclean \
+	distclean-compile distclean-generic distclean-libtool \
+	distclean-tags distdir dvi dvi-am html html-am info info-am \
+	install install-am install-data install-data-am install-dvi \
+	install-dvi-am install-exec install-exec-am install-html \
+	install-html-am install-info install-info-am install-man \
+	install-pdf install-pdf-am install-pkglibLTLIBRARIES \
+	install-ps install-ps-am install-sbinPROGRAMS install-strip \
+	installcheck installcheck-am installdirs maintainer-clean \
 	maintainer-clean-generic mostlyclean mostlyclean-compile \
 	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
 	tags tags-am uninstall uninstall-am \

@@ -253,15 +253,18 @@ get_bHadHUP(void)
 	return ret;
 }
 
+/* we need a pointer to the conf, because in early startup stage we
+ * need to use loadConf, later on runConf.
+ */
 rsRetVal
-queryLocalHostname(void)
+queryLocalHostname(rsconf_t *const pConf)
 {
 	uchar *LocalHostName = NULL;
 	uchar *LocalDomain = NULL;
 	uchar *LocalFQDNName;
 	DEFiRet;
 
-	CHKiRet(net.getLocalHostname(&LocalFQDNName));
+	CHKiRet(net.getLocalHostname(pConf, &LocalFQDNName));
 	uchar *dot = (uchar*) strstr((char*)LocalFQDNName, ".");
 	if(dot == NULL) {
 		CHKmalloc(LocalHostName = (uchar*) strdup((char*)LocalFQDNName));
@@ -460,19 +463,24 @@ prepareBackground(const int parentPipeFD)
 		/* try MacOS, FreeBSD */
 		if(close_unneeded_open_files("/proc/fd", beginClose, parentPipeFD) != 0) {
 			/* did not work out, so let's close everything... */
-			const int endClose = getdtablesize();
-#		if defined(HAVE_CLOSE_RANGE)
-			if(close_range(beginClose, endClose, 0) != 0) {
-				dbgprintf("errno %d after close_range(), fallback to loop\n", errno);
-#		endif
-				for(int i = beginClose ; i <= endClose ; ++i) {
-					if((i != dbgGetDbglogFd()) && (i != parentPipeFD)) {
-						  aix_close_it(i); /* AIXPORT */
-					}
+			int endClose = (parentPipeFD > dbgGetDbglogFd()) ? parentPipeFD : dbgGetDbglogFd();
+			for(int i = beginClose ; i <= endClose ; ++i) {
+				if((i != dbgGetDbglogFd()) && (i != parentPipeFD)) {
+					aix_close_it(i); /* AIXPORT */
 				}
-#		if defined(HAVE_CLOSE_RANGE)
 			}
-#		endif
+			beginClose = endClose + 1;
+			endClose = getdtablesize();
+#if defined(HAVE_CLOSE_RANGE)
+			if(close_range(beginClose, endClose, 0) !=0) {
+				dbgprintf("errno %d after close_range(), fallback to loop\n", errno);
+#endif
+				for(int i = beginClose ; i <= endClose ; ++i) {
+					aix_close_it(i); /* AIXPORT */
+				}
+#if defined(HAVE_CLOSE_RANGE)
+			}
+#endif
 		}
 	}
 	seedRandomNumberForChild();
@@ -1654,7 +1662,6 @@ initAll(int argc, char **argv)
 			CAP_FIELD(CAP_BLOCK_SUSPEND, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
 			CAP_FIELD(CAP_NET_RAW, CAPNG_EFFECTIVE | CAPNG_PERMITTED ),
 			CAP_FIELD(CAP_CHOWN, CAPNG_EFFECTIVE | CAPNG_PERMITTED ),
-			CAP_FIELD(CAP_IPC_LOCK, CAPNG_EFFECTIVE | CAPNG_PERMITTED ),
 			CAP_FIELD(CAP_LEASE, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
 			CAP_FIELD(CAP_NET_ADMIN, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
 			CAP_FIELD(CAP_NET_BIND_SERVICE, CAPNG_EFFECTIVE | CAPNG_PERMITTED),
@@ -1951,7 +1958,7 @@ doHUP(void)
 		logmsgInternal(NO_ERRCODE, LOG_SYSLOG|LOG_INFO, (uchar*)buf, 0);
 	}
 
-	queryLocalHostname(); /* re-read our name */
+	queryLocalHostname(runConf); /* re-read our name */
 	ruleset.IterateAllActions(ourConf, doHUPActions, NULL);
 	DBGPRINTF("doHUP: doing modules\n");
 	modDoHUP();

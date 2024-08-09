@@ -66,8 +66,7 @@ override_dh_auto_configure:
 		--disable-generate-man-pages \
 		--disable-fmhttp \
 		--disable-liblogging-stdlog \
-		--without-valgrind-testbench \
-		--with-systemdsystemunitdir=/lib/systemd/system
+		--without-valgrind-testbench
 
 override_dh_auto_install:
 	dh_auto_install

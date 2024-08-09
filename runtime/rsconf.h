@@ -1,6 +1,6 @@
 /* The rsconf object. It models a complete rsyslog configuration.
  *
- * Copyright 2011-2022 Rainer Gerhards and Adiscon GmbH.
+ * Copyright 2011-2023 Rainer Gerhards and Adiscon GmbH.
  *
  * This file is part of the rsyslog runtime library.
  *
@@ -116,6 +116,7 @@ struct globals_s {
 	uchar *pszDfltNetstrmDrvrKeyFile; /* default key file for the netstrm driver (server) */
 	uchar *pszDfltNetstrmDrvr; /* module name of default netstream driver */
 	uchar *pszNetstrmDrvrCAExtraFiles; /* CA extra file for the netstrm driver */
+	uchar *pszDfltOpensslEngine; /* custom openssl engine */
 	uchar *oversizeMsgErrorFile; /* File where oversize messages are written to */
 	int reportOversizeMsg; /* shall error messages be generated for oversize messages? */
 	int oversizeMsgInputMode; /* Mode which oversize messages will be forwarded */
