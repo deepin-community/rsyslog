@@ -1,3 +1,9 @@
+rsyslog (8.2406.0-1deepin1) unstable; urgency=medium
+
+  * Modify logrotate configuration to be consistent with v20.
+
+ -- xinpeng.wang <wangxinpeng@uniontech.com>  Wed, 12 Feb 2025 17:27:36 +0800
+
 rsyslog (8.2406.0-1) unstable; urgency=medium
 
   * New upstream version 8.2406.0
