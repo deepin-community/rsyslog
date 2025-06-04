@@ -1,3 +1,9 @@
+rsyslog (8.2406.0-1deepin2) unstable; urgency=medium
+
+  * feat: add sw64 support.
+
+ -- hudeng <hudeng@deepin.org>  Wed, 04 Jun 2025 16:29:20 +0800
+
 rsyslog (8.2406.0-1deepin1) unstable; urgency=medium
 
   * Modify logrotate configuration to be consistent with v20.
