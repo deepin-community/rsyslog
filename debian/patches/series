@@ -2,3 +2,4 @@ Don-t-create-a-database.patch
 Increase-timeouts-in-imfile-basic-2GB-file-and-imfile-tru.patch
 0001-deepin-sw_64-support.diff
 CVE-2026-55556.patch
+CVE-2026-19654.patch
