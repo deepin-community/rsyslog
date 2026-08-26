@@ -1,3 +1,9 @@
+rsyslog (8.2406.0-1deepin5) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-19654
+
+ -- deepin-ci-robot <packages@deepin.org>  Fri, 21 Aug 2026 18:30:26 +0800
+
 rsyslog (8.2406.0-1deepin4) unstable; urgency=medium
 
   * fix(cve): CVE-2026-55556
