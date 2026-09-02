@@ -1,3 +1,12 @@
+rsyslog (8.2406.0-1deepin7) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-78002 (high) - rainerscript: align replace sizing
+    rewind   Upstream:
+    https://github.com/rsyslog/rsyslog/commit/667e3f61aec5ee02c5c2ee6f0f
+    8accf6fe4301a9
+
+ -- deepin-ci-robot <packages@deepin.org>  Wed, 02 Sep 2026 22:35:52 +0800
+
 rsyslog (8.2406.0-1deepin6) unstable; urgency=medium
 
   * fix(test): disable imfile-logrotate-async test (slow on aarch64)
