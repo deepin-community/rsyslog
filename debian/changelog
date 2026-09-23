@@ -1,3 +1,11 @@
+rsyslog (8.2406.0-1deepin8) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-61548 (unknown) - fix: mmpstrucdata - prevent
+    buffer overflow and add size limits   Upstream:
+    https://github.com/rsyslog/rsyslog/pull/6991.patch
+
+ -- deepin-ci-robot <packages@deepin.org>  Wed, 23 Sep 2026 15:47:04 +0800
+
 rsyslog (8.2406.0-1deepin7) unstable; urgency=medium
 
   * fix(cve): CVE-2026-78002 (high) - rainerscript: align replace sizing
