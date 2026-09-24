@@ -5,3 +5,4 @@ CVE-2026-55556.patch
 CVE-2026-19654.patch
 Disable-imfile-logrotate-async-test.patch
 CVE-2026-78002.patch
+CVE-2026-93403.patch
